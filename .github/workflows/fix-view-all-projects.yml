@@ -1,0 +1,44 @@
+name: Fix View all projects card
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch dynamic project navigation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          old_card = '<div class="empty-project" data-go="projects"><div><div class="plus">＋</div><b>View all projects</b><div style="font-size:11px;margin-top:4px">NextPlan stays focused on the work that matters.</div></div></div>'
+          new_card = '<button class="empty-project" type="button" data-go="projects" aria-label="View all projects"><div><div class="plus">＋</div><b>View all projects</b><div style="font-size:11px;margin-top:4px">Open the complete Projects view.</div></div></button>'
+          if old_card in s:
+              s = s.replace(old_card, new_card)
+          anchor = "document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.go)));"
+          delegated = "document.addEventListener('click',e=>{const target=e.target.closest('[data-go]');if(target&&target.closest('#homeProjects'))showView(target.dataset.go)});"
+          if delegated not in s:
+              if anchor not in s:
+                  raise SystemExit('navigation anchor not found')
+              s = s.replace(anchor, anchor + delegated)
+          style_anchor = ".empty-project{min-height:164px;"
+          if style_anchor in s and ".empty-project{cursor:pointer;" not in s:
+              s = s.replace(style_anchor, ".empty-project{cursor:pointer;width:100%;font:inherit;color:var(--muted);" + style_anchor.split('{',1)[1])
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Fix View all projects navigation card"
+          git push
