@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nextplane-shell-v2';
+const CACHE_NAME = 'nextplan-shell-v3';
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', event => {

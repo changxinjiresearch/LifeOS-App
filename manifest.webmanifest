@@ -1,6 +1,6 @@
 {
-  "name": "NextPlane",
-  "short_name": "NextPlane",
+  "name": "NextPlan",
+  "short_name": "NextPlan",
   "description": "A conversation-synced personal progress and project dashboard.",
   "start_url": "/LifeOS-App/",
   "scope": "/LifeOS-App/",
