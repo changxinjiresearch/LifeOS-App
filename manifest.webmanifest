@@ -1,6 +1,6 @@
 {
-  "name": "Trajectory",
-  "short_name": "Trajectory",
+  "name": "NextPlane",
+  "short_name": "NextPlane",
   "description": "A conversation-synced personal progress and project dashboard.",
   "start_url": "/LifeOS-App/",
   "scope": "/LifeOS-App/",
