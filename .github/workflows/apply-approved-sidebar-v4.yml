@@ -1,0 +1,191 @@
+name: Apply approved 236px sidebar design
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply approved sidebar spec
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          # The approved mockup specifies SF Pro with Inter/system fallback.
+          # On Chromebook, Inter is the deterministic web fallback.
+          s = re.sub(r'\n?<link href="https://fonts\.googleapis\.com/css2\?family=DM\+Sans:[^"]+" rel="stylesheet">', '', s)
+          inter = '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">'
+          if 'family=Inter' not in s:
+              s = s.replace('<title>NextPlan</title>', inter + '\n<title>NextPlan</title>', 1)
+
+          marker_start = '/* APPROVED SIDEBAR SPEC v4 START */'
+          marker_end = '/* APPROVED SIDEBAR SPEC v4 END */'
+          s = re.sub(re.escape(marker_start) + r'.*?' + re.escape(marker_end), '', s, flags=re.S)
+
+          css = r'''
+/* APPROVED SIDEBAR SPEC v4 START */
+/* Exact implementation target from the approved 236px reference mockup. */
+.sidebar{
+  width:236px;
+  padding:24px 16px 18px;
+  background:#fafbfc;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Inter","Helvetica Neue",Arial,sans-serif;
+}
+html[data-theme="dark"] .sidebar{background:#0b1220}
+.brand{
+  gap:14px;
+  padding:0 8px 22px;
+  align-items:center;
+}
+.brand-mark{
+  width:56px;
+  height:56px;
+  border-radius:16px;
+  box-shadow:0 10px 24px rgba(67,97,238,.22);
+}
+.brand-mark img{width:56px;height:56px}
+.brand h1{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Inter","Helvetica Neue",Arial,sans-serif;
+  font-size:23px;
+  line-height:27px;
+  font-weight:700;
+  letter-spacing:-.55px;
+  color:#0f172a;
+}
+.brand p{
+  margin:3px 0 0;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Helvetica Neue",Arial,sans-serif;
+  font-size:13px;
+  line-height:18px;
+  font-weight:400;
+  letter-spacing:-.12px;
+  color:#64748b;
+}
+html[data-theme="dark"] .brand h1{color:#f8fafc}
+html[data-theme="dark"] .brand p{color:#94a3b8}
+.nav-group{gap:6px}
+.nav-btn{
+  min-height:44px;
+  padding:10px 16px;
+  gap:12px;
+  border-radius:12px;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Inter","Helvetica Neue",Arial,sans-serif;
+  font-size:16px;
+  line-height:24px;
+  font-weight:400;
+  letter-spacing:-.2px;
+  color:#0f172a;
+}
+.nav-btn > svg{
+  width:20px;
+  height:20px;
+  flex:0 0 20px;
+  color:#64748b;
+  stroke-width:1.75;
+}
+.nav-btn.active{
+  min-height:44px;
+  color:#fff;
+  font-weight:500;
+  background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);
+  box-shadow:0 8px 18px rgba(37,99,235,.22);
+}
+.nav-btn.active > svg{color:#fff}
+.nav-btn:hover:not(.active){background:#f1f5f9}
+html[data-theme="dark"] .nav-btn{color:#f8fafc}
+html[data-theme="dark"] .nav-btn > svg{color:#94a3b8}
+html[data-theme="dark"] .nav-btn.active{background:#1e3a8a;color:#fff}
+html[data-theme="dark"] .nav-btn.active > svg{color:#fff}
+html[data-theme="dark"] .nav-btn:hover:not(.active){background:#111c2d}
+.nav-label{
+  margin:18px 0 0;
+  padding:28px 16px 10px;
+  border-top:1px solid #e2e8f0;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Helvetica Neue",Arial,sans-serif;
+  font-size:12px;
+  line-height:16px;
+  font-weight:600;
+  letter-spacing:.11em;
+  color:#64748b;
+}
+html[data-theme="dark"] .nav-label{border-top-color:#233044;color:#94a3b8}
+.area-dot{
+  width:28px;
+  height:28px;
+  border-radius:9px;
+  flex:0 0 28px;
+  font-size:13px;
+  line-height:28px;
+  font-weight:600;
+}
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid #e2e8f0;
+}
+html[data-theme="dark"] .sidebar-footer{border-top-color:#233044}
+.settings-btn{
+  min-height:44px;
+  padding:10px 16px;
+  gap:12px;
+  border-radius:12px;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Helvetica Neue",Arial,sans-serif;
+  font-size:16px;
+  line-height:24px;
+  font-weight:400;
+  letter-spacing:-.2px;
+  color:#64748b;
+}
+.settings-btn svg{
+  width:20px;
+  height:20px;
+  flex:0 0 20px;
+  color:#64748b;
+  stroke-width:1.75;
+}
+.settings-btn:hover{background:#f1f5f9}
+html[data-theme="dark"] .settings-btn{color:#cbd5e1}
+html[data-theme="dark"] .settings-btn svg{color:#cbd5e1}
+html[data-theme="dark"] .settings-btn:hover{background:#111c2d}
+/* Keep the actual sidebar column exactly 236px at desktop widths. */
+@media(min-width:1181px){.app-shell{grid-template-columns:236px minmax(0,1fr) 292px}}
+/* APPROVED SIDEBAR SPEC v4 END */
+'''
+          s = s.replace('</style>', css + '\n</style>', 1)
+
+          # Ensure the Settings gear is the clean outline glyph shown in the approved mockup.
+          pattern = re.compile(r'<button class="settings-btn" id="settingsNav">.*?</button>', re.S)
+          settings = '''<button class="settings-btn" id="settingsNav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05-2.12 2.12-.05-.05a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V20h-3v-.08a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.87.34l-.05.05-2.12-2.12.05-.05A1.7 1.7 0 0 0 7.04 15a1.7 1.7 0 0 0-1.56-1.03H5.4v-3h.08A1.7 1.7 0 0 0 7.04 9.94a1.7 1.7 0 0 0-.34-1.87l-.05-.05L8.77 5.9l.05.05a1.7 1.7 0 0 0 1.87.34 1.7 1.7 0 0 0 1.03-1.56V4.65h3v.08a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.05-.05 2.12 2.12-.05.05a1.7 1.7 0 0 0-.34 1.87 1.7 1.7 0 0 0 1.56 1.03h.08v3h-.08A1.7 1.7 0 0 0 19.4 15z"/></svg>Settings</button>'''
+          s, n = pattern.subn(settings, s, count=1)
+          if n != 1:
+              raise SystemExit('Settings button not found')
+
+          # Force a fresh service worker registration, without changing localStorage keys.
+          s = re.sub(r"navigator\.serviceWorker\.register\('\./sw\.js(?:\?[^']*)?'(?:,\{updateViaCache:'none'\})?\)",
+                     "navigator.serviceWorker.register('./sw.js?v=approved-sidebar-v4',{updateViaCache:'none'})", s, count=1)
+          p.write_text(s, encoding='utf-8')
+
+          sw = Path('sw.js')
+          t = sw.read_text(encoding='utf-8')
+          t = re.sub(r"const CACHE_NAME = 'nextplan-shell-v\d+';", "const CACHE_NAME = 'nextplan-shell-v6';", t, count=1)
+          sw.write_text(t, encoding='utf-8')
+          PY
+      - name: Commit approved sidebar
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html sw.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Implement approved 236px NextPlan sidebar"
+          git push
