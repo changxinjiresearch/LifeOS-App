@@ -1,0 +1,41 @@
+name: Add NextPlan sync indicator
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch sync indicator
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          if '.sync-pill{' not in s:
+              s = s.replace('.search-btn{height:38px;', '.top-actions{display:flex;align-items:center;gap:9px}.sync-pill{height:34px;border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(18px);border-radius:999px;padding:0 10px;display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;white-space:nowrap}.sync-pill .sync-dot{width:7px;height:7px;border-radius:50%;background:#aab2bf}.sync-pill.synced .sync-dot{background:var(--green)}.sync-pill.syncing .sync-dot{background:var(--orange)}.sync-pill.error .sync-dot{background:var(--red)}.search-btn{height:38px;')
+              s = s.replace('<button class="search-btn" id="searchBtn">', '<div class="top-actions"><div class="sync-pill" id="syncPill"><span class="sync-dot"></span><span id="syncText">Local</span></div><button class="search-btn" id="searchBtn">')
+              s = s.replace('</button></header>', '</button></div></header>', 1)
+              s = s.replace("async function sync(){if(busy)return;const c=getCfg();if(!c.token)return;busy=true;try{", "async function sync(){if(busy)return;const c=getCfg();if(!c.token){$('syncPill').className='sync-pill';$('syncText').textContent='Local';return}busy=true;$('syncPill').className='sync-pill syncing';$('syncText').textContent='Syncing';try{")
+              s = s.replace("state=x;saveCache();renderAll()}catch(e){console.warn('NextPlan sync failed:',e)}finally{busy=false}}", "state=x;saveCache();renderAll();$('syncPill').className='sync-pill synced';$('syncText').textContent='Synced'}catch(e){console.warn('NextPlan sync failed:',e);$('syncPill').className='sync-pill error';$('syncText').textContent='Offline'}finally{busy=false}}")
+              s = s.replace('.search-btn{width:42px;padding:0;justify-content:center}', '.sync-pill{display:none}.search-btn{width:42px;padding:0;justify-content:center}')
+          s = s.replace('.avatar{width:38px;height:38px;border-radius:50%;', '.avatar{width:38px;height:38px;border:0;border-radius:50%;')
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Add subtle sync status indicator"
+          git push
