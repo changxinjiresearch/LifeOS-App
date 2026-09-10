@@ -1,0 +1,77 @@
+name: Fix sidebar reference match
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Match approved sidebar typography and restore icons
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          # Keep the existing body font, but add a clearly different, softer sidebar face.
+          dm = '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">'
+          if 'family=DM+Sans' not in s:
+              anchor = '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">'
+              if anchor in s:
+                  s = s.replace(anchor, anchor + '\n' + dm, 1)
+              else:
+                  s = s.replace('<title>NextPlan</title>', dm + '\n<title>NextPlan</title>', 1)
+
+          # Add final overrides rather than disturbing the rest of the app typography.
+          overrides = '''
+/* Sidebar typography v3 — approved visual direction */
+.sidebar{font-family:"DM Sans","Inter",-apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",sans-serif}
+.brand h1{font-family:"DM Sans","Inter",sans-serif;font-size:20px;font-weight:700;letter-spacing:-.035em}
+.brand p{font-family:"DM Sans","Inter",sans-serif;font-size:12px;font-weight:400;letter-spacing:-.012em;line-height:1.28}
+.nav-btn{font-family:"DM Sans","Inter",sans-serif;font-size:17px;font-weight:400;line-height:1.2;letter-spacing:-.018em}
+.nav-label{font-family:"DM Sans","Inter",sans-serif;font-size:11px;font-weight:600;letter-spacing:.10em}
+.settings-btn{font-family:"DM Sans","Inter",sans-serif;font-size:17px;font-weight:400;line-height:1.2;letter-spacing:-.018em}
+/* Restore the pre-typography-change navigation icon geometry. */
+.nav-btn svg{width:17px;height:17px;color:#7d8798;stroke-width:1.8}
+.nav-btn.active svg{color:#fff}
+/* Only Settings gets the new approved gear treatment. */
+.settings-btn svg{width:18px;height:18px;color:#667085;stroke-width:1.8}
+'''
+          marker = '/* Sidebar typography v3 — approved visual direction */'
+          if marker not in s:
+              s = s.replace('</style>', overrides + '\n</style>', 1)
+
+          # Replace only the Settings glyph; leave every other navigation SVG untouched.
+          pattern = re.compile(r'<button class="settings-btn" id="settingsNav">.*?</button>', re.S)
+          new_settings = '''<button class="settings-btn" id="settingsNav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.83 2.83-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06-2.83-2.83.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3v-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06 2.83-2.83.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3h4v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06 2.83 2.83-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21v4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</button>'''
+          s, n = pattern.subn(new_settings, s, count=1)
+          if n != 1:
+              raise SystemExit('Settings button not found')
+
+          s = re.sub(r"navigator\.serviceWorker\.register\('\./sw\.js(?:\?[^']*)?'(?:,\{updateViaCache:'none'\})?\)",
+                     "navigator.serviceWorker.register('./sw.js?v=sidebar-dm-sans-1',{updateViaCache:'none'})", s, count=1)
+
+          p.write_text(s, encoding='utf-8')
+
+          sw = Path('sw.js')
+          t = sw.read_text(encoding='utf-8')
+          t = re.sub(r"const CACHE_NAME = 'nextplan-shell-v\d+';", "const CACHE_NAME = 'nextplan-shell-v5';", t, count=1)
+          sw.write_text(t, encoding='utf-8')
+          PY
+      - name: Commit sidebar correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html sw.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Match approved sidebar typography and restore nav icons"
+          git push
