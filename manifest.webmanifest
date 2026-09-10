@@ -1,7 +1,7 @@
 {
-  "name": "Changxin Life OS",
-  "short_name": "Life OS",
-  "description": "A conversation-synced personal progress dashboard.",
+  "name": "Trajectory",
+  "short_name": "Trajectory",
+  "description": "A conversation-synced personal progress and project dashboard.",
   "start_url": "/LifeOS-App/",
   "scope": "/LifeOS-App/",
   "display": "standalone",
