@@ -1,0 +1,53 @@
+name: Refine Apple sidebar typography v2
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refine sidebar typography and settings icon
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          s=s.replace('https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700&display=swap',
+                      'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap')
+
+          s=s.replace('font-size:15px;font-weight:500;letter-spacing:-.015em;text-align:left}.nav-btn svg{width:19px;height:19px;color:#718096;stroke-width:1.75}',
+                      'font-size:16px;font-weight:400;line-height:1.25;letter-spacing:-.022em;text-align:left}.nav-btn svg{width:20px;height:20px;color:#667085;stroke-width:1.7}')
+
+          s=s.replace('padding:9px 11px;border-radius:10px;font-size:15px;font-weight:500;letter-spacing:-.015em}.settings-btn svg{width:19px;height:19px;stroke-width:1.75;color:#718096}',
+                      'padding:10px 11px;border-radius:10px;font-size:16px;font-weight:400;line-height:1.25;letter-spacing:-.022em}.settings-btn svg{width:20px;height:20px;stroke-width:1.7;color:#667085}')
+
+          old_start='<button class="settings-btn" id="settingsNav"><svg viewBox="0 0 24 24"'
+          i=s.find(old_start)
+          if i!=-1:
+              j=s.find('</button>',i)
+              if j!=-1:
+                  j+=len('</button>')
+                  new_btn='''<button class="settings-btn" id="settingsNav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19 13.5v-3l-2.1-.5a7.1 7.1 0 0 0-.7-1.6l1.1-1.9-2.1-2.1-1.9 1.1a7.1 7.1 0 0 0-1.6-.7L11.2 2h-3l-.5 2.1a7.1 7.1 0 0 0-1.6.7L4.2 3.7 2.1 5.8l1.1 1.9a7.1 7.1 0 0 0-.7 1.6L.4 9.8v3l2.1.5a7.1 7.1 0 0 0 .7 1.6l-1.1 1.9 2.1 2.1 1.9-1.1a7.1 7.1 0 0 0 1.6.7l.5 2.1h3l.5-2.1a7.1 7.1 0 0 0 1.6-.7l1.9 1.1 2.1-2.1-1.1-1.9a7.1 7.1 0 0 0 .7-1.6z" transform="translate(2.3 0) scale(.81 1)"/></svg>Settings</button>'''
+                  s=s[:i]+new_btn+s[j:]
+
+          s=s.replace("navigator.serviceWorker.register('./sw.js?v=apple-sidebar-1')",
+                      "navigator.serviceWorker.register('./sw.js?v=apple-sidebar-2',{updateViaCache:'none'})")
+
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit refinement
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Make Apple sidebar typography visibly match reference"
+          git push
