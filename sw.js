@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nextplan-shell-v10-leaf-logo';
+const CACHE_NAME = 'nextplan-shell-v9-current-action-direct';
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', event => {
