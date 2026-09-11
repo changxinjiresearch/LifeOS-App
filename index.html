@@ -277,5 +277,5 @@ $('settingsForm').onsubmit=e=>{if(e.submitter?.value!=='save')return;e.preventDe
 const th=localStorage.getItem(THEME)||'light';document.documentElement.dataset.theme=th;renderAll();if(getCfg().token){sync();syncTimer=setInterval(sync,60000)}if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=sidebar-final-v5',{updateViaCache:'none'}).catch(()=>{}))}
 })();
 </script>
-</body>
+<script src="./current-action.js?v=20260912-direct"></script></body>
 </html>
