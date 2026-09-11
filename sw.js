@@ -1,5 +1,5 @@
-const CACHE_NAME = 'nextplan-shell-v7';
-const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
+const CACHE_NAME = 'nextplan-shell-v8-current-action';
+const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './current-action.js'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
@@ -19,10 +19,20 @@ self.addEventListener('fetch', event => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request, { cache: 'no-store' }).then(response => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
-        return response;
+      fetch(request, { cache: 'no-store' }).then(async response => {
+        const text = await response.clone().text();
+        const injected = text.includes('current-action.js')
+          ? text
+          : text.replace('</body>', '<script src="./current-action.js?v=20260912"></script></body>');
+        const headers = new Headers(response.headers);
+        headers.set('content-type', 'text/html; charset=utf-8');
+        const modified = new Response(injected, {
+          status: response.status,
+          statusText: response.statusText,
+          headers
+        });
+        caches.open(CACHE_NAME).then(cache => cache.put('./index.html', modified.clone()));
+        return modified;
       }).catch(() => caches.match('./index.html'))
     );
     return;
