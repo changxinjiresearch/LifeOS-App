@@ -1,4 +1,4 @@
-name: Apply NextPlan Phase B UI
+name: Maintain NextPlan Phase B UI
 
 on:
   push:
@@ -13,16 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch Phase B UI
-        run: python .github/scripts/phase_b_patch.py
-      - name: Commit Phase B UI
+      - name: Verify and maintain Phase B UI
+        run: python .github/scripts/phase_b_ui_maintain.py
+      - name: Commit normalized Phase B UI
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html sw.js
+          git add index.html
           if git diff --cached --quiet; then
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Apply NextPlan Phase B workflow, decision and calendar UI"
+          git commit -m "Maintain NextPlan Phase B UI contract"
           git push
