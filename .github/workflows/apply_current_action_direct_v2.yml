@@ -1,4 +1,4 @@
-name: Apply direct current-action UI fix
+name: Apply NextPlan Phase B UI
 
 on:
   push:
@@ -13,9 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch current-action UI directly into index
-        run: python .github/scripts/fix_current_action_direct_v2.py
-      - name: Commit direct current-action fix
+      - name: Patch Phase B UI
+        run: python .github/scripts/phase_b_patch.py
+      - name: Commit Phase B UI
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -24,5 +24,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Fix current-action cards directly in NextPlan UI"
+          git commit -m "Apply NextPlan Phase B workflow, decision and calendar UI"
           git push
