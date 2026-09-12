@@ -13,23 +13,28 @@ if 'function currentActionInfo(p)' not in s:
 
 lines = s.splitlines()
 out = []
+replaced_home = False
 replaced_card = False
 replaced_projects = False
 for line in lines:
-    if line.startswith('function projectCard(p){'):
+    if line.startswith('function renderHome(){'):
+        out.append("function renderHome(){const ps=state.projects||[],ov=overallPct(),active=ps.filter(p=>p.status==='active').length,waiting=ps.filter(p=>p.status==='waiting').length,dl=confirmedDeadlines().filter(x=>x.date>=startOfToday()&&x.date<=new Date(Date.now()+30*86400000));$('overallPct').textContent=ov+'%';$('overallBar').style.width=ov+'%';$('overallMeta').textContent=`${ps.filter(p=>projectPct(p)===100).length} / ${ps.length} projects completed  ·  ${active} in progress  ·  Last updated: ${formatUpdated(state.system?.last_updated)}`;$('statTotal').textContent=ps.length;$('statActive').textContent=active+' active';$('statProgress').textContent=active;$('statWaiting').textContent=waiting;$('statDeadlines').textContent=dl.length;$('homeProjects').innerHTML=ps.map(projectCard).join('')}")
+        replaced_home = True
+    elif line.startswith('function projectCard(p){'):
         out.append("function projectCard(p){const pc=projectPct(p),[bg,fg]=colorForCategory(p.category),action=currentActionInfo(p);return `<article class=\"card project-card\"><div class=\"pc-top\"><div class=\"pc-icon\" style=\"background:${bg};color:${fg}\">${iconForCategory(p.category)}</div><div class=\"pc-text\"><div class=\"pc-title\">${esc(p.name)}</div><div class=\"pc-sub\">${esc(p.category)} · ${priorityLabel(p.priority)} · ${statusLabel(p.status)}</div></div><div class=\"pc-pct\">${pc}%</div></div><div class=\"mini-progress\"><span style=\"width:${pc}%\"></span></div><div class=\"pc-next\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><rect x=\"5\" y=\"4\" width=\"14\" height=\"16\" rx=\"2\"/><path d=\"M8 2v4m8-4v4M8 10h8\"/></svg><div><b>${esc(action.label)}</b>${esc(action.text)}</div></div></article>`}")
         replaced_card = True
     elif line.startswith('function renderProjects(){'):
         out.append("function renderProjects(){const area=$('projectAreaFilter').value,status=$('projectStatusFilter').value;const ps=(state.projects||[]).filter(p=>(area==='全部'||p.category===area)&&(status==='全部'||p.status===status));$('projectList').innerHTML=ps.length?ps.map(p=>{const action=currentActionInfo(p);return `<div class=\"list-row\"><span class=\"status-dot ${statusClass(p.status)}\"></span><div class=\"list-main\"><div class=\"list-title\">${esc(p.name)}</div><div class=\"list-sub\"><b style=\"color:var(--text);font-weight:630\">${esc(action.label)}：</b>${esc(action.text)}</div><div class=\"milestone-tags\">${(p.milestones||[]).map(m=>`<span class=\"priority\">${statusLabel(m.status)} · ${esc(m.name)}</span>`).join('')}</div></div><div class=\"list-meta\"><b style=\"color:var(--text);font-size:16px\">${projectPct(p)}%</b><br>${esc(p.category)} · ${priorityLabel(p.priority)}</div></div>`}).join(''):`<div class=\"empty-state\"><b>没有符合条件的项目</b>换一个筛选条件即可。</div>`}")
         replaced_projects = True
     elif 'current-action.js' in line and '<script src=' in line:
-        # The direct implementation now lives inside index.html; remove the old out-of-scope patch.
         line = line.replace('<script src="./current-action.js?v=20260912-direct"></script>', '')
         if line.strip():
             out.append(line)
     else:
         out.append(line)
 
+if not replaced_home:
+    raise SystemExit('renderHome function not found')
 if not replaced_card:
     raise SystemExit('projectCard function not found')
 if not replaced_projects:
@@ -38,12 +43,12 @@ if not replaced_projects:
 s = '\n'.join(out) + '\n'
 s = s.replace('当前所有主要项目，一眼看到进度与下一步。', '当前所有主要项目，一眼看到进度与当前动作。')
 s = s.replace('长期目标、状态、里程碑与下一步。', '长期目标、状态、里程碑与当前动作。')
-s = s.replace("navigator.serviceWorker.register('./sw.js?v=sidebar-final-v5',{updateViaCache:'none'})", "navigator.serviceWorker.register('./sw.js?v=current-action-direct-v2',{updateViaCache:'none'})")
+s = s.replace("navigator.serviceWorker.register('./sw.js?v=sidebar-final-v5',{updateViaCache:'none'})", "navigator.serviceWorker.register('./sw.js?v=home-all-projects-v1',{updateViaCache:'none'})")
+s = s.replace("navigator.serviceWorker.register('./sw.js?v=current-action-direct-v2',{updateViaCache:'none'})", "navigator.serviceWorker.register('./sw.js?v=home-all-projects-v1',{updateViaCache:'none'})")
 p.write_text(s, encoding='utf-8')
 
-# Replace the service worker with a simple, deterministic network-first worker.
 sw = Path('sw.js')
-sw.write_text("""const CACHE_NAME = 'nextplan-shell-v9-current-action-direct';
+sw.write_text("""const CACHE_NAME = 'nextplan-shell-v10-home-all-projects';
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', event => {
@@ -78,4 +83,4 @@ self.addEventListener('fetch', event => {
 });
 """, encoding='utf-8')
 
-print('Current-action UI patched directly into index.html; legacy injector removed; service worker simplified.')
+print('Home now renders every project card; current-action UI remains direct; service worker cache bumped.')
