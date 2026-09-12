@@ -54,7 +54,7 @@ if marker not in s:
         r'^function renderNotes\(\).*?$': render_notes,
         r'^function renderResources\(\).*?$': render_resources,
         r'^function renderAnalytics\(\).*?$': render_analytics,
-        r'^function renderSearch\(q\).*?$': render_search,
+        r'function renderSearch\(q\).*?$': render_search,
     }
     for pat, rep in replacements.items():
         s, n = re.subn(pat, rep, s, count=1, flags=re.M)
