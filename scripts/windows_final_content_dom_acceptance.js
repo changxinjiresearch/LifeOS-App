@@ -40,7 +40,7 @@ window.eval(source);
   assert(first.turn.userText.includes('NextPlan 新建项目 DOM验收'),'content.normalizes_chinese_colon');
   assert(first.turn.assistantText.includes('NextPlan Sync'),'content.captures_assistant_text');
   assert(first.turn.url.includes('chatgpt.com/c/dom-final'),'content.captures_url');
-  assert([...window.document.body.querySelectorAll('div')].some(x=>x.textContent.includes('NextPlan · Synced')),'content.success_toast');
+  assert((window.document.getElementById('nextplan-local-toast')?.textContent||'').includes('NextPlan · Synced'),'content.success_toast');
 
   mode='needs_desktop';
   const u=window.document.createElement('div');u.setAttribute('data-message-author-role','user');u.textContent='NextPlan：新建项目 DOM重试';
@@ -50,7 +50,7 @@ window.eval(source);
   await wait(2700);
   assert(calls.length>before,'content.captures_mutated_new_turn');
   const retryFingerprint=calls[calls.length-1].turn.fingerprint;
-  assert([...window.document.body.querySelectorAll('div')].some(x=>x.textContent.includes('Open NextPlan Desktop')),'content.needs_desktop_toast');
+  assert((window.document.getElementById('nextplan-local-toast')?.textContent||'').includes('Open NextPlan Desktop'),'content.needs_desktop_toast');
   const afterFirstFailure=calls.length;
   await wait(4300);
   assert(calls.length>afterFirstFailure,'content.retries_failed_turn');
