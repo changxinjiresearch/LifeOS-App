@@ -1,0 +1,202 @@
+name: NextPlan Windows v0.1.3 Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [release-builder-rescue]
+    paths:
+      - '.github/workflows/rescue-windows-v013.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  SEED_RUN_ID: '34742831144'
+  VERSION: '0.1.3'
+  OFFICIAL_EXTENSION_ID: 'gbdcbnbdmkgjffjioohjfidjmchiggpc'
+
+jobs:
+  windows-v013:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Download verified Windows Local Core seed
+        uses: actions/download-artifact@v4
+        with:
+          name: rescue-old-windows-release
+          path: old-seed
+          github-token: ${{ github.token }}
+          repository: changxinjiresearch/LifeOS-App
+          run-id: ${{ env.SEED_RUN_ID }}
+
+      - name: Recover verified Windows Local Core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive 'old-seed/old-windows-release.zip' -DestinationPath 'old-release' -Force
+          $oldInstaller=Get-ChildItem old-release -Filter '*.exe' -File -Recurse | Select-Object -First 1
+          if(-not $oldInstaller){throw 'old installer missing'}
+          $p=Start-Process $oldInstaller.FullName -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'old installer failed'}
+          $core=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-core.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if(-not $core){throw 'verified nextplan-core.exe not found'}
+          New-Item -ItemType Directory 'desktop_local/src-tauri/resources' -Force | Out-Null
+          Copy-Item $core.FullName 'desktop_local/src-tauri/resources/nextplan-core.exe' -Force
+
+      - name: Prepare unified UI and v0.1.3 Bridge
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:NEXTPLAN_WEB_UI_REF='main'
+          python scripts/sync_web_ui_to_desktop.py
+          npx --yes @tauri-apps/cli@2 icon icon.svg --output desktop_local/src-tauri/icons
+          node --check desktop_local/ui/desktop-adapter.js
+          node --check desktop_local/ui/web-runtime.js
+          node --check chrome_extension_local/background.js
+          node --check chrome_extension_local/content.js
+          node --check chrome_extension_local/popup.js
+          node --check chrome_extension_local/options.js
+          $manifest=Get-Content chrome_extension_local/manifest.json -Raw | ConvertFrom-Json
+          if($manifest.version -ne '0.1.3'){throw 'Bridge manifest is not v0.1.3'}
+          $rust=Get-Content desktop_local/src-tauri/src/main.rs -Raw
+          if($rust -notmatch 'windows_subsystem = "windows"'){throw 'Windows GUI subsystem declaration missing'}
+          if($rust -notmatch 'CREATE_NO_WINDOW'){throw 'hidden Local Core process flag missing'}
+
+      - name: Prove exact no-space create normalization
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          const fs=require('fs');let captured=null;
+          global.window={};global.location={pathname:'/c/v013',href:'https://chatgpt.com/c/v013'};
+          global.document={title:'ChatGPT',documentElement:{appendChild(){}},querySelectorAll(sel){if(sel.includes('user'))return[{innerText:'NextPlan：新建项目持久化测试'}];if(sel.includes('assistant'))return[{innerText:'收到'}];return[]},getElementById(){return null},createElement(){return{style:{},id:'',textContent:''}}};
+          global.requestAnimationFrame=fn=>fn();global.MutationObserver=class{observe(){}};
+          global.chrome={runtime:{sendMessage:async msg=>{captured=msg;return null;}}};
+          eval(fs.readFileSync('chrome_extension_local/content.js','utf8'));
+          setTimeout(()=>{if(!captured)throw new Error('turn not captured');if(captured.turn.userText!=='NextPlan 新建项目 持久化测试')throw new Error(`bad normalization: ${captured.turn.userText}`);fs.writeFileSync('normalized-create.txt',captured.turn.userText,'utf8');console.log('NO_SPACE_CREATE_NORMALIZATION_PASS')},2400);
+          '@ | Set-Content bridge-normalization.js -Encoding UTF8
+          node bridge-normalization.js
+
+      - name: Rust compile check
+        run: cargo check --manifest-path desktop_local/src-tauri/Cargo.toml
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          npx --yes @tauri-apps/cli@2 build --bundles nsis --config desktop_local/src-tauri/tauri.conf.json
+          $desktop=(Resolve-Path 'desktop_local/src-tauri/target/release/nextplan-local-desktop.exe').Path
+          $bytes=[IO.File]::ReadAllBytes($desktop);$peOffset=[BitConverter]::ToInt32($bytes,0x3c);$subsystem=[BitConverter]::ToUInt16($bytes,$peOffset+24+68)
+          if($subsystem -ne 2){throw "desktop PE subsystem is $subsystem, expected Windows GUI (2)"}
+          $installer=Get-ChildItem 'desktop_local/src-tauri/target/release/bundle/nsis' -Filter '*.exe' | Select-Object -First 1
+          if(-not $installer){throw 'installer missing'}
+          New-Item -ItemType Directory release -Force | Out-Null
+          Copy-Item $installer.FullName "release/NextPlan-Setup-v$env:VERSION.exe" -Force
+
+      - name: Real install and replay failed acceptance cases
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $installer=(Resolve-Path "release/NextPlan-Setup-v$env:VERSION.exe").Path
+          $p=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'installer failed'}
+          $desktop=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-local-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if(-not $desktop){throw 'installed desktop missing'}
+          $oldPath=$env:PATH
+          try {
+            $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+            $env:NEXTPLAN_LOCAL_PYTHON='C:\definitely-not-python\python.exe';$env:PYTHONHOME='C:\definitely-not-python';$env:PYTHONPATH='C:\definitely-not-python';$env:NODE_PATH='C:\definitely-not-node'
+            $app=Start-Process $desktop.FullName -PassThru
+            $health=$null
+            for($i=0;$i -lt 75;$i++){try{$health=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($health.status -eq 'ok'){break}}catch{};Start-Sleep 1}
+            if(-not $health -or $health.runtime -ne 'nextplan-local-core-v4'){throw 'Local Core failed'}
+            $ext=$env:OFFICIAL_EXTENSION_ID;$origin="chrome-extension://$ext"
+            $boot=Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$origin;'X-NextPlan-Extension-Id'=$ext} -ContentType 'application/json' -Body '{}'
+            if(-not $boot.token){throw 'bootstrap token missing'}
+            $create=@{turn=@{fingerprint='v013-create';userText=(Get-Content normalized-create.txt -Raw).Trim();assistantText='收到';title='v013';url='https://chatgpt.com/c/v013'};client=@{source='v013-ci';bridgeVersion='0.1.3';now=(Get-Date).ToUniversalTime().ToString('o');timezone='UTC';utcOffsetMinutes=0};apply=$true}|ConvertTo-Json -Depth 8
+            $capture=Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47123/conversation/capture -Headers @{Origin=$origin;Authorization="Bearer $($boot.token)"} -ContentType 'application/json' -Body $create
+            if($capture.candidate.kind -ne 'create_project' -or -not $capture.receipt){throw 'no-space create did not execute'}
+            $env:NEXTPLAN_TEST_TOKEN=$boot.token
+            @'
+            const fs=require('fs');const store={endpoint:'http://127.0.0.1:47123',bridgeEndpoint:'http://127.0.0.1:47124',token:process.env.NEXTPLAN_TEST_TOKEN,processedFingerprints:[]};let listener=null;
+            const local={async get(arg){if(Array.isArray(arg)){const o={};for(const k of arg)o[k]=store[k];return o}if(typeof arg==='object')return{...arg,...store};return{[arg]:store[arg]}},async set(v){Object.assign(store,v)}};
+            global.chrome={runtime:{id:process.env.OFFICIAL_EXTENSION_ID,onInstalled:{addListener(){}},onStartup:{addListener(){}},onMessage:{addListener(fn){listener=fn}}},storage:{local},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}}};
+            const nativeFetch=global.fetch;const origin=`chrome-extension://${process.env.OFFICIAL_EXTENSION_ID}`;global.fetch=(url,opt={})=>{const h=new Headers(opt.headers||{});if(String(url).startsWith('http://127.0.0.1:'))h.set('Origin',origin);return nativeFetch(url,{...opt,headers:h})};
+            eval(fs.readFileSync('chrome_extension_local/background.js','utf8'));
+            function turn(fp,userText){return new Promise((resolve,reject)=>{const ok=listener({type:'NEXTPLAN_TURN',turn:{fingerprint:fp,userText,assistantText:'收到',title:'v013',url:'https://chatgpt.com/c/v013'}},null,resolve);if(!ok)reject(new Error('listener did not retain channel'));setTimeout(()=>reject(new Error('timeout')),10000)})}
+            (async()=>{const status=await turn('v013-status','NextPlan：把“持久化测试”项目设置为 waiting');if(status.status!=='auto_synced')throw new Error(`status failed: ${JSON.stringify(status)}`);const calendar=await turn('v013-calendar','NextPlan：记录一下，明天下午4点有一个测试 meeting');if(calendar.status!=='auto_synced')throw new Error(`calendar failed: ${JSON.stringify(calendar)}`);fs.writeFileSync('bridge-results.json',JSON.stringify({status,calendar},null,2));console.log('REAL_BACKGROUND_STATUS_CALENDAR_PASS')})().catch(e=>{console.error(e);process.exit(1)});
+            '@ | Set-Content real-background-acceptance.js -Encoding UTF8
+            node real-background-acceptance.js
+            $state=Invoke-RestMethod -Uri http://127.0.0.1:47123/state -Headers @{Origin=$origin;Authorization="Bearer $($boot.token)"}
+            $project=$state.projects|Where-Object{$_.name -eq '持久化测试'}|Select-Object -First 1
+            if(-not $project){throw '持久化测试 missing'}
+            if($project.status -ne 'waiting'){throw "project status is $($project.status), expected waiting"}
+            $compat=$state.deadlines|Where-Object{$_.title -like '__NP_CAL_V1__:*'}|Select-Object -First 1
+            if(-not $compat){throw 'calendar compatibility record missing'}
+            $state|ConvertTo-Json -Depth 20|Set-Content raw-state.json -Encoding UTF8
+            Write-Host PROJECT_STATUS_WAITING_PASS
+            Write-Host CALENDAR_COMPAT_PERSISTENCE_PASS
+
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue|ForEach-Object{Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue}
+            Start-Sleep 2
+            $app=Start-Process $desktop.FullName -PassThru
+            for($i=0;$i -lt 75;$i++){try{$health=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($health.status -eq 'ok'){break}}catch{};Start-Sleep 1}
+            $boot2=Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$origin;'X-NextPlan-Extension-Id'=$ext} -ContentType 'application/json' -Body '{}'
+            $state2=Invoke-RestMethod -Uri http://127.0.0.1:47123/state -Headers @{Origin=$origin;Authorization="Bearer $($boot2.token)"}
+            $project2=$state2.projects|Where-Object{$_.name -eq '持久化测试'}|Select-Object -First 1
+            if(-not $project2 -or $project2.status -ne 'waiting'){throw 'project/status not persistent after restart'}
+            Write-Host RESTART_PERSISTENCE_PASS
+          } finally {
+            $env:PATH=$oldPath
+            if($app){Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue}
+            Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue|ForEach-Object{Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue}
+          }
+
+      - name: Prove Desktop adapter exposes meeting as Calendar Event, not Deadline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          const fs=require('fs'),raw=JSON.parse(fs.readFileSync('raw-state.json','utf8').replace(/^\uFEFF/,''));
+          class Storage{constructor(){this.data={}}getItem(k){return this.data[k]??null}setItem(k,v){this.data[k]=String(v)}}
+          global.Storage=Storage;global.localStorage=new Storage();
+          global.window={fetch:async(url)=>{if(String(url).endsWith('/healthz'))return{ok:true,json:async()=>({status:'ok'})};if(String(url).endsWith('/state'))return{ok:true,json:async()=>structuredClone(raw)};throw new Error(url)},__TAURI__:{core:{invoke:async()=>({endpoint:'http://127.0.0.1:47123',token:'test-token',mode:'test'})}}};
+          eval(fs.readFileSync('desktop_local/ui/desktop-adapter.js','utf8'));
+          (async()=>{const state=await window.__NEXTPLAN_STATE_ADAPTER__.readState();const event=(state.calendar_events||[]).find(x=>x.title==='测试 meeting');if(!event)throw new Error('decoded calendar event missing');if(event.time!=='16:00'||event.kind!=='meeting')throw new Error(`bad event ${JSON.stringify(event)}`);if((state.deadlines||[]).some(x=>String(x.title||'').startsWith('__NP_CAL_V1__:')))throw new Error('compat event leaked into deadlines');console.log('CALENDAR_EVENT_NOT_DEADLINE_PASS')})().catch(e=>{console.error(e);process.exit(1)});
+          '@ | Set-Content adapter-acceptance.js -Encoding UTF8
+          node adapter-acceptance.js
+
+      - name: Package v0.1.3 Windows acceptance release
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'chrome_extension_local/*' -DestinationPath "release/NextPlan-Local-Bridge-v$env:VERSION-Windows.zip" -Force
+          Copy-Item desktop_local/ui/web-ui-source.json release/web-ui-source.json
+          @"
+          canonical_web=changxinjiresearch/LifeOS-App@main
+          desktop_contract=windows-v0.1.3-status-calendar-no-space
+          architecture=windows-x64
+          zero_dependency_acceptance=PASS
+          no_space_create=PASS
+          project_status_update=PASS
+          calendar_write=PASS
+          calendar_not_deadline=PASS
+          restart_persistence=PASS
+          no_console=PASS
+          secure_browser_bootstrap=PASS
+          "@ | Set-Content release/BUILD-METADATA.txt
+          Get-FileHash release/* -Algorithm SHA256|ForEach-Object{"$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))"}|Set-Content release/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nextplan-v0.1.3-windows-acceptance
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
