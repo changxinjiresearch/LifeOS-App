@@ -18,6 +18,7 @@ TEXT_SUFFIXES = {".html", ".css", ".js", ".json", ".webmanifest", ".svg", ".txt"
 
 
 def fetch_bytes(name: str) -> bytes:
+    print(f"fetch canonical asset: {name}", flush=True)
     req = urllib.request.Request(
         f"{BASE}/{name}",
         headers={"User-Agent": "NextPlan-Desktop-Web-Parity-Sync/3.1"},
@@ -68,8 +69,6 @@ def decode_text(name: str, data: bytes) -> str | None:
 
 
 def fetch_asset_graph(source_index: str) -> dict[str, bytes]:
-    # sw.js is runtime infrastructure even though it is registered from inline JS.
-    # Other assets are followed only through real HTML src/href or CSS url() refs.
     pending = discover_local_refs(source_index) | {"sw.js"}
     fetched: dict[str, bytes] = {}
     while pending:
