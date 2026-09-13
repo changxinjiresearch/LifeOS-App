@@ -61,6 +61,8 @@ s = s.replace("meta=[n.category||'Note',p?.name", "meta=[categoryLabel(n.categor
 
 # System punctuation / empty states. User-provided project, milestone, action, note and resource text is not modified.
 s = s.replace('${esc(action.label)}：</b>${esc(action.text)}', '${esc(action.label)}: </b>${esc(action.text)}')
+s = s.replace('<b>Why this?</b>${esc(t.why)}', '<b>Why this?:</b> ${esc(t.why)}')
+s = s.replace('<b>Current action</b>${esc(p.next_action||t.name)}', '<b>Current action:</b> ${esc(p.next_action||t.name)}')
 s = s.replace('<div class="empty-state"><b>没有符合条件的项目</b>换一个筛选条件即可。</div>', '<div class="empty-state"><b>No projects match these filters</b>Try a different filter.</div>')
 s = s.replace('<div class="card empty-state"><b>现在没有可执行任务</b>如果其他项目都在 Waiting，今天可以安心停下来。</div>', '<div class="card empty-state"><b>No actionable tasks right now</b>If everything else is Waiting, you can stop for today.</div>')
 s = s.replace('<b>暂无日历事项</b>确认过的 meeting、presentation 与 deadline 会显示在这里。', '<b>No calendar items yet</b>Confirmed meetings, presentations, and deadlines will appear here.')
