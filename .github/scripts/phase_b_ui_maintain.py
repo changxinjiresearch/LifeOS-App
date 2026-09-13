@@ -46,5 +46,44 @@ apple_style = '<link rel="stylesheet" href="./apple-web-v1.css?v=apple-web-v1">'
 if apple_style not in s:
     s = s.replace('<title>NextPlan</title>', apple_style + '\n<title>NextPlan</title>', 1)
 
+# Small layout corrections requested after Apple UI rollout.
+# These intentionally change layout only; the Apple visual language remains intact.
+layout_fix = '''
+/* NEXTPLAN APPLE LAYOUT FIX v2 */
+.hero:before{display:none!important}
+#view-projects .list-card{
+  display:block!important;
+  padding:0!important;
+  overflow:hidden!important;
+  background:var(--apple-panel)!important;
+  border:1px solid var(--apple-border)!important;
+  border-radius:19px!important;
+  box-shadow:var(--apple-shadow)!important;
+  backdrop-filter:blur(26px) saturate(145%)!important;
+  -webkit-backdrop-filter:blur(26px) saturate(145%)!important;
+}
+#view-projects .list-row{
+  position:static!important;
+  min-height:0!important;
+  padding:15px 17px!important;
+  border:0!important;
+  border-top:1px solid rgba(91,104,122,.08)!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  display:flex!important;
+  gap:14px!important;
+  align-items:flex-start!important;
+  align-content:normal!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+#view-projects .list-row:first-child{border-top:0!important}
+#view-projects .list-meta{margin-left:auto!important;text-align:right!important}
+.task-check{align-self:center!important}
+'''
+if '/* NEXTPLAN APPLE LAYOUT FIX v2 */' not in s:
+    s = s.replace('</style>', layout_fix + '\n</style>', 1)
+
 p.write_text(s, encoding='utf-8')
-print('Phase B UI contract verified; duplicate helpers removed; blocked-state presentation normalized; Apple web theme linked.')
+print('Phase B UI contract verified; Apple theme retained; Projects list layout, task alignment, and hero decoration fixed.')
