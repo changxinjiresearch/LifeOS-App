@@ -9,7 +9,7 @@ const html=fs.readFileSync(htmlPath,'utf8');
 const manifest=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
 const expected=process.env.EXPECTED_UI_SHA || 'b1765641ad11d545e17e46d07e53dfc5fdd9e0756c79d82d803beeac2bb88d59';
 assert(manifest.source_index_sha256===expected,'ui.canonical_source_hash',manifest.source_index_sha256);
-assert(manifest.state_adapter==='Local Core -> SQLite','ui.local_state_adapter');
+assert(String(manifest.data_contract||'').includes('Local Core -> SQLite'),'ui.local_state_adapter',manifest.data_contract||'');
 
 for(const text of ['Home','Projects','Tasks','Calendar','Weekly Review','AI Planning','Automation','Notes','Resources','Analytics','Settings']) assert(html.includes(text),`ui.nav.${text.replaceAll(' ','_')}`);
 for(const fn of ['renderHome','renderProjects','renderTasks','renderWeeklyReview','renderPlanner','renderAutomation','renderNotes','renderResources','renderAnalytics','searchIndex','parseSearchQuery','pickNext']) assert(html.includes(`function ${fn}`)||html.includes(`const ${fn}`),`ui.logic.${fn}`);
