@@ -308,6 +308,170 @@ dialog::backdrop{background:rgba(34,38,44,.23)!important;backdrop-filter:blur(8p
 .search-result{border-radius:12px!important}
 .search-result:hover{background:rgba(94,142,210,.08)!important}
 
+/* Search / Command Palette — refined Apple search surface */
+dialog#searchDialog.search-modal{
+  width:min(680px,calc(100vw - 32px))!important;
+  max-height:72vh!important;
+  align-self:start!important;
+  margin-top:9vh!important;
+  border-radius:24px!important;
+  overflow:hidden!important;
+  background:rgba(255,255,255,.94)!important;
+  border:1px solid rgba(114,124,140,.12)!important;
+  box-shadow:0 30px 90px rgba(31,40,55,.18),0 6px 24px rgba(31,40,55,.08)!important;
+  backdrop-filter:blur(34px) saturate(165%)!important;
+  -webkit-backdrop-filter:blur(34px) saturate(165%)!important;
+}
+dialog#searchDialog::backdrop{
+  background:rgba(18,24,34,.18)!important;
+  backdrop-filter:blur(3px)!important;
+  -webkit-backdrop-filter:blur(3px)!important;
+}
+#searchDialog .search-input-wrap{
+  position:relative!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+  padding:16px 16px 12px!important;
+  border-bottom:0!important;
+  background:transparent!important;
+}
+#searchDialog .search-input-wrap>svg{
+  position:absolute!important;
+  z-index:2!important;
+  left:31px!important;
+  width:18px!important;
+  height:18px!important;
+  color:#8b96a8!important;
+  pointer-events:none!important;
+}
+#searchDialog .search-input-wrap input{
+  height:46px!important;
+  min-width:0!important;
+  padding:0 15px 0 42px!important;
+  border:1px solid rgba(105,117,135,.11)!important;
+  border-radius:14px!important;
+  outline:0!important;
+  background:#f4f6f9!important;
+  box-shadow:inset 0 1px 1px rgba(42,55,75,.025)!important;
+  color:var(--apple-text)!important;
+  font-size:16px!important;
+  letter-spacing:-.16px!important;
+}
+#searchDialog .search-input-wrap input:focus{
+  border-color:rgba(75,143,247,.34)!important;
+  background:#f7f9fc!important;
+  box-shadow:0 0 0 4px rgba(75,143,247,.09)!important;
+}
+#searchDialog .search-input-wrap input::placeholder{color:#9aa4b3!important;opacity:1!important}
+#searchDialog #closeSearch{
+  flex:0 0 auto!important;
+  min-width:44px!important;
+  height:34px!important;
+  padding:0 10px!important;
+  border-radius:10px!important;
+  border:1px solid rgba(105,117,135,.11)!important;
+  background:#f7f8fa!important;
+  color:#667085!important;
+  box-shadow:none!important;
+  font-size:12px!important;
+}
+#searchDialog .search-results{
+  max-height:56vh!important;
+  overflow:auto!important;
+  padding:2px 12px 14px!important;
+  background:transparent!important;
+}
+#searchDialog .search-help{
+  padding:8px 10px 10px!important;
+  color:#98a2b3!important;
+  font-size:11px!important;
+  line-height:1.45!important;
+}
+#searchDialog .search-result{
+  display:grid!important;
+  grid-template-columns:76px minmax(0,1fr)!important;
+  align-items:center!important;
+  gap:12px!important;
+  min-height:58px!important;
+  margin:2px 0!important;
+  padding:10px 11px!important;
+  border-radius:13px!important;
+  border:1px solid transparent!important;
+  transition:background .14s ease,border-color .14s ease,transform .14s ease!important;
+}
+#searchDialog .search-result:hover{
+  background:rgba(75,143,247,.07)!important;
+  border-color:rgba(75,143,247,.08)!important;
+  transform:translateY(-1px)!important;
+}
+#searchDialog .search-kind{
+  justify-self:start!important;
+  margin:0!important;
+  padding:4px 7px!important;
+  border-radius:8px!important;
+  background:#eef2f7!important;
+  color:#697586!important;
+  font-size:10px!important;
+  font-weight:650!important;
+  letter-spacing:.01em!important;
+}
+#searchDialog .search-result[data-palette-view="projects"] .search-kind{background:#e8f2ff!important;color:#3d7fd9!important}
+#searchDialog .search-result[data-palette-view="tasks"] .search-kind{background:#e8f7f1!important;color:#2b8e6c!important}
+#searchDialog .search-result[data-palette-view="calendar"] .search-kind{background:#fff3df!important;color:#b9791d!important}
+#searchDialog .search-result[data-palette-view="notes"] .search-kind{background:#f1ebff!important;color:#7957ca!important}
+#searchDialog .search-result[data-palette-view="resources"] .search-kind{background:#edf0ff!important;color:#536fc5!important}
+#searchDialog .search-result b{
+  display:block!important;
+  color:var(--apple-text)!important;
+  font-size:13px!important;
+  line-height:1.35!important;
+  font-weight:650!important;
+}
+#searchDialog .search-result p{
+  margin:3px 0 0!important;
+  color:#8c96a6!important;
+  font-size:11px!important;
+  line-height:1.4!important;
+}
+/* Empty query should never dump every project milestone into the palette. */
+#searchDialog:has(#searchInput:placeholder-shown) .search-result{display:none!important}
+#searchDialog:has(#searchInput:placeholder-shown) .search-help{display:none!important}
+#searchDialog:has(#searchInput:placeholder-shown) .search-results{
+  min-height:190px!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+  padding:28px 34px 34px!important;
+}
+#searchDialog:has(#searchInput:placeholder-shown) .search-results::before{
+  content:"Search NextPlan";
+  display:block;
+  color:var(--apple-text);
+  font-size:17px;
+  line-height:1.3;
+  font-weight:680;
+  letter-spacing:-.3px;
+}
+#searchDialog:has(#searchInput:placeholder-shown) .search-results::after{
+  content:"Find projects, tasks, calendar events, notes and resources. Internal project steps stay hidden until you search for them.";
+  display:block;
+  max-width:430px;
+  margin-top:7px;
+  color:#909aaa;
+  font-size:12px;
+  line-height:1.5;
+}
+html[data-theme="dark"] dialog#searchDialog.search-modal{background:rgba(28,33,41,.96)!important;border-color:rgba(255,255,255,.08)!important}
+html[data-theme="dark"] #searchDialog .search-input-wrap input{background:#252b34!important;border-color:rgba(255,255,255,.07)!important}
+html[data-theme="dark"] #searchDialog .search-input-wrap input:focus{background:#292f39!important;border-color:rgba(112,164,246,.32)!important}
+html[data-theme="dark"] #searchDialog #closeSearch{background:#262c35!important;border-color:rgba(255,255,255,.07)!important;color:#b4bdca!important}
+html[data-theme="dark"] #searchDialog .search-kind{background:#303742!important;color:#aeb7c4!important}
+html[data-theme="dark"] #searchDialog .search-result p{color:#98a2b3!important}
+html[data-theme="dark"] #searchDialog:has(#searchInput:placeholder-shown) .search-results::after{color:#98a2b3!important}
+
 /* Small screens retain the same product structure */
 @media(max-width:1180px){
   .app-shell{grid-template-columns:220px minmax(0,1fr)!important}
@@ -326,6 +490,7 @@ dialog::backdrop{background:rgba(34,38,44,.23)!important;backdrop-filter:blur(8p
   .project-grid,#view-projects .list-card,.notes-grid,.resources-grid,.analytics-grid,.calendar-layout{grid-template-columns:1fr!important}
   .hero-row{align-items:flex-start!important;flex-direction:column!important}
   .hero .primary{width:100%;justify-content:center!important}
+  dialog#searchDialog.search-modal{margin-top:6vh!important}
 }
 @media(max-width:520px){
   .stats{grid-template-columns:1fr!important}
@@ -333,4 +498,6 @@ dialog::backdrop{background:rgba(34,38,44,.23)!important;backdrop-filter:blur(8p
   .hero-pct{font-size:38px!important}
   .task-card{grid-template-columns:26px 1fr!important}
   .task-card>:last-child{grid-column:2}
+  #searchDialog .search-result{grid-template-columns:66px minmax(0,1fr)!important}
+  #searchDialog:has(#searchInput:placeholder-shown) .search-results{min-height:170px!important;padding:24px 24px 30px!important}
 }
