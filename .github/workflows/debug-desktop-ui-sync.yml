@@ -14,3 +14,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run canonical Web-to-Desktop sync with asset logging
         run: NEXTPLAN_WEB_UI_REF=main python3 scripts/sync_web_ui_to_desktop.py
+      - name: Verify generated adapter boundary
+        run: |
+          grep -q 'await adapter.readState(c)' desktop_local/ui/web-runtime.js
+          ! grep -q 'window.fetch =' desktop_local/ui/desktop-adapter.js
+          echo DESKTOP_UI_SYNC_PASS
