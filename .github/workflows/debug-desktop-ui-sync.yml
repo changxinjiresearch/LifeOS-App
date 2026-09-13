@@ -5,6 +5,7 @@ on:
     branches: [release-builder-rescue]
     paths:
       - '.github/workflows/debug-desktop-ui-sync.yml'
+      - 'scripts/sync_web_ui_to_desktop.py'
   workflow_dispatch:
 
 jobs:
