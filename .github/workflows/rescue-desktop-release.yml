@@ -1,0 +1,252 @@
+name: NextPlan Desktop Rescue Release
+
+on:
+  push:
+    branches: [release-builder-rescue]
+    paths:
+      - '.github/workflows/rescue-desktop-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed-native-cores:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download last verified native release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL 'https://sdmntprwestus2.oaiusercontent.com/files/00000000-eeb4-81f8-9283-431be7ca3881/raw?se=2026-09-13T06%3A31%3A56Z&sp=r&sv=2026-02-06&sr=b&scid=4415142a-8de4-531a-980d-14abcee7e5f4&skoid=b7fc319f-b93c-4fac-ba5f-14fdc3f9209f&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-13T03%3A17%3A09Z&ske=2026-09-14T03%3A17%3A09Z&sks=b&skv=2026-02-06&sig=l1cPdgmjy9jlpPLmUcdqOaA8uDJf09Na/s1bAgaB0dA%3D' -o seed-arm.zip
+          curl -fL 'https://sdmntprwestus2.oaiusercontent.com/files/00000000-dc4c-81f8-a887-ec7564b81107/raw?se=2026-09-13T06%3A32%3A10Z&sp=r&sv=2026-02-06&sr=b&scid=c66545a2-b6d9-5e6d-9fc9-b7f201fd71cd&skoid=b7fc319f-b93c-4fac-ba5f-14fdc3f9209f&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-13T03%3A17%3A11Z&ske=2026-09-14T03%3A17%3A11Z&sks=b&skv=2026-02-06&sig=xxV%2BA1dx37Zxgjaf8cBrVTrSg37ki2099%2BSFuFMSpxc%3D' -o seed-intel.zip
+          curl -fL 'https://sdmntprcentralus.oaiusercontent.com/files/00000000-4f54-81f5-954d-2316759a7d59/raw?se=2026-09-13T06%3A32%3A29Z&sp=r&sv=2026-02-06&sr=b&scid=90aef416-2c34-5f84-8847-003991544201&skoid=b7fc319f-b93c-4fac-ba5f-14fdc3f9209f&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-13T05%3A03%3A18Z&ske=2026-09-14T05%3A03%3A18Z&sks=b&skv=2026-02-06&sig=7rb/rim6ckCq%2BdXUITGmLOC2YnJ6DkX1vVoSDAB88Jw%3D' -o seed-windows.zip
+      - name: Extract unchanged macOS Local Core binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p arm-outer intel-outer arm-inner intel-inner seed/arm seed/intel seed/windows
+          unzip -q seed-arm.zip -d arm-outer
+          ARM_APP_ZIP="$(find arm-outer -name '*apple-silicon.app.zip' -print -quit)"
+          test -n "$ARM_APP_ZIP"
+          unzip -q "$ARM_APP_ZIP" -d arm-inner
+          ARM_CORE="$(find arm-inner -path '*/Contents/Resources/resources/nextplan-core' -print -quit)"
+          test -x "$ARM_CORE"
+          cp "$ARM_CORE" seed/arm/nextplan-core
+          unzip -q seed-intel.zip -d intel-outer
+          INTEL_APP_ZIP="$(find intel-outer -name '*intel.app.zip' -print -quit)"
+          test -n "$INTEL_APP_ZIP"
+          unzip -q "$INTEL_APP_ZIP" -d intel-inner
+          INTEL_CORE="$(find intel-inner -path '*/Contents/Resources/resources/nextplan-core' -print -quit)"
+          test -x "$INTEL_CORE"
+          cp "$INTEL_CORE" seed/intel/nextplan-core
+          cp seed-windows.zip seed/windows/old-windows-release.zip
+          sha256sum seed/arm/nextplan-core seed/intel/nextplan-core seed/windows/old-windows-release.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rescue-core-macos-arm64
+          path: seed/arm/nextplan-core
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rescue-core-macos-x64
+          path: seed/intel/nextplan-core
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rescue-old-windows-release
+          path: seed/windows/old-windows-release.zip
+          retention-days: 1
+
+  macos-distributable:
+    needs: seed-native-cores
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: apple-silicon
+            seed: rescue-core-macos-arm64
+            uname: arm64
+          - runner: macos-15-intel
+            arch: intel
+            seed: rescue-core-macos-x64
+            uname: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.seed }}
+          path: core-seed
+      - name: Prepare latest canonical Desktop UI and native core
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = '${{ matrix.uname }}'
+          NEXTPLAN_WEB_UI_REF=main python3 scripts/sync_web_ui_to_desktop.py
+          mkdir -p desktop_local/src-tauri/resources desktop_local/src-tauri/icons
+          cp core-seed/nextplan-core desktop_local/src-tauri/resources/nextplan-core
+          chmod +x desktop_local/src-tauri/resources/nextplan-core
+          npx --yes @tauri-apps/cli@2 icon icon.svg --output desktop_local/src-tauri/icons
+          test -f desktop_local/src-tauri/icons/icon.icns
+          node --check desktop_local/ui/desktop-adapter.js
+          node --check desktop_local/ui/web-runtime.js
+          grep -q 'await adapter.readState(c)' desktop_local/ui/web-runtime.js
+          ! grep -q 'window.fetch =' desktop_local/ui/desktop-adapter.js
+      - name: Build app and DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes @tauri-apps/cli@2 build --bundles app,dmg --config desktop_local/src-tauri/tauri.conf.json
+          APP="$(find desktop_local/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
+          DMG="$(find desktop_local/src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$APP" && test -d "$APP"
+          test -n "$DMG" && test -f "$DMG"
+          test -x "$APP/Contents/Resources/resources/nextplan-core"
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+      - name: Zero-dependency clean-machine acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          CORE="$APP/Contents/Resources/resources/nextplan-core"
+          DESKTOP="$APP/Contents/MacOS/nextplan-local-desktop"
+          cleanup(){ pkill -f "$CORE" 2>/dev/null || true; pkill -f "$DESKTOP" 2>/dev/null || true; rm -rf "$TMP"; }
+          trap cleanup EXIT
+          /usr/bin/env -i HOME="$TMP" TMPDIR="$TMP" PATH='/usr/bin:/bin:/usr/sbin:/sbin' NEXTPLAN_LOCAL_DB="$TMP/direct.db" NEXTPLAN_LOCAL_PORT=47124 NEXTPLAN_LOCAL_BOOTSTRAP_TOKEN=rescue NEXTPLAN_LOCAL_PYTHON=/definitely/missing/python3 PYTHONHOME=/definitely/missing/python PYTHONPATH=/definitely/missing/python NODE_PATH=/definitely/missing/node "$CORE" >"$TMP/core.log" 2>&1 &
+          CORE_PID=$!
+          ok=0; for i in {1..60}; do if /usr/bin/curl -fsS http://127.0.0.1:47124/healthz > "$TMP/health.json" 2>/dev/null; then ok=1; break; fi; /bin/sleep 1; done
+          test "$ok" = 1
+          grep -q 'nextplan-local-core-v4' "$TMP/health.json"
+          kill "$CORE_PID"; wait "$CORE_PID" 2>/dev/null || true
+          mkdir -p "$TMP/home"
+          /usr/bin/env -i HOME="$TMP/home" TMPDIR="$TMP" PATH='/usr/bin:/bin:/usr/sbin:/sbin' NEXTPLAN_LOCAL_PYTHON=/definitely/missing/python3 PYTHONHOME=/definitely/missing/python PYTHONPATH=/definitely/missing/python NODE_PATH=/definitely/missing/node "$DESKTOP" >"$TMP/desktop.log" 2>&1 &
+          DESKTOP_PID=$!
+          ok=0; for i in {1..75}; do if /usr/bin/curl -fsS http://127.0.0.1:47123/healthz > "$TMP/installed-health.json" 2>/dev/null; then ok=1; break; fi; /bin/sleep 1; done
+          test "$ok" = 1
+          grep -q 'nextplan-local-core-v4' "$TMP/installed-health.json"
+          echo ZERO_DEPENDENCY_MACOS_ACCEPTANCE_PASS
+          kill "$DESKTOP_PID" 2>/dev/null || true
+      - name: Package release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp "$DMG" "release/NextPlan-v0.1.0-macOS-${{ matrix.arch }}.dmg"
+          cp desktop_local/ui/web-ui-source.json release/web-ui-source.json
+          shasum -a 256 release/* > release/SHA256SUMS.txt
+          cat > release/BUILD-METADATA.txt <<EOF
+          canonical_web=changxinjiresearch/LifeOS-App@main
+          desktop_contract_source=changxinjiresearch/LifeOS@b23da3458eb6b115ece50e9cb217e309a4554eed
+          local_core_binary_source=verified-release@19bf8c01e95a83c1271b8fdd4679d5c4f49677ee
+          architecture=${{ matrix.arch }}
+          zero_dependency_acceptance=PASS
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nextplan-v0.1.0-macos-${{ matrix.arch }}-latest-unified-ui
+          path: release/*
+          retention-days: 30
+
+  windows-distributable:
+    needs: seed-native-cores
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: rescue-old-windows-release
+          path: old-seed
+      - name: Recover unchanged verified Windows Local Core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive 'old-seed/old-windows-release.zip' -DestinationPath 'old-release' -Force
+          $oldInstaller = Get-ChildItem old-release -Filter '*.exe' -File -Recurse | Select-Object -First 1
+          if (-not $oldInstaller) { throw 'old verified NSIS installer missing' }
+          $p = Start-Process $oldInstaller.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "old verified installer failed: $($p.ExitCode)" }
+          $core = Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-core.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $core) { throw 'installed verified nextplan-core.exe not found' }
+          New-Item -ItemType Directory 'desktop_local/src-tauri/resources' -Force | Out-Null
+          Copy-Item $core.FullName 'desktop_local/src-tauri/resources/nextplan-core.exe' -Force
+          Write-Host "Recovered core: $($core.FullName)"
+      - name: Prepare latest canonical Desktop UI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:NEXTPLAN_WEB_UI_REF='main'
+          python scripts/sync_web_ui_to_desktop.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory 'desktop_local/src-tauri/icons' -Force | Out-Null
+          npx --yes @tauri-apps/cli@2 icon icon.svg --output desktop_local/src-tauri/icons
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check desktop_local/ui/desktop-adapter.js
+          node --check desktop_local/ui/web-runtime.js
+          if ((Get-Content desktop_local/ui/desktop-adapter.js -Raw) -match 'window\.fetch\s*=') { throw 'fetch monkeypatch found' }
+          if ((Get-Content desktop_local/ui/web-runtime.js -Raw) -notmatch 'await adapter\.readState\(c\)') { throw 'state adapter seam missing' }
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          npx --yes @tauri-apps/cli@2 build --bundles nsis --config desktop_local/src-tauri/tauri.conf.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installer = Get-ChildItem 'desktop_local/src-tauri/target/release/bundle/nsis' -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'new NSIS installer missing' }
+          New-Item -ItemType Directory release -Force | Out-Null
+          Copy-Item $installer.FullName 'release/NextPlan-Setup-v0.1.0.exe' -Force
+      - name: Zero-dependency installed-app acceptance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $installer=(Resolve-Path 'release/NextPlan-Setup-v0.1.0.exe').Path
+          $p=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "new installer failed: $($p.ExitCode)" }
+          $desktop=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-local-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $desktop) { throw 'installed desktop executable missing' }
+          $oldPath=$env:PATH
+          $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+          $env:NEXTPLAN_LOCAL_PYTHON='C:\definitely-not-python\python.exe'
+          $env:PYTHONHOME='C:\definitely-not-python'
+          $env:PYTHONPATH='C:\definitely-not-python'
+          $env:NODE_PATH='C:\definitely-not-node'
+          $app=Start-Process $desktop.FullName -PassThru
+          $health=$null
+          for($i=0;$i -lt 75;$i++){
+            try { $health=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2; if($health.status -eq 'ok'){ break } } catch {}
+            Start-Sleep -Seconds 1
+          }
+          $env:PATH=$oldPath
+          if(-not $health -or $health.runtime -ne 'nextplan-local-core-v4' -or -not $health.integrity.ok){ throw 'zero-dependency installed app acceptance failed' }
+          Write-Host ZERO_DEPENDENCY_WINDOWS_ACCEPTANCE_PASS
+          Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+          Get-NetTCPConnection -LocalPort 47123 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+      - name: Package metadata and hashes
+        shell: pwsh
+        run: |
+          Copy-Item desktop_local/ui/web-ui-source.json release/web-ui-source.json
+          @"
+          canonical_web=changxinjiresearch/LifeOS-App@main
+          desktop_contract_source=changxinjiresearch/LifeOS@b23da3458eb6b115ece50e9cb217e309a4554eed
+          local_core_binary_source=verified-release@19bf8c01e95a83c1271b8fdd4679d5c4f49677ee
+          architecture=windows-x64
+          zero_dependency_acceptance=PASS
+          "@ | Set-Content release/BUILD-METADATA.txt
+          Get-FileHash release/* -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($_.Path))" } | Set-Content release/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nextplan-v0.1.0-windows-latest-unified-ui
+          path: release/*
+          retention-days: 30
