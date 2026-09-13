@@ -94,14 +94,21 @@ jobs:
           $desktop=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-local-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if(-not $desktop){throw 'installed desktop missing'}
           $oldPath=$env:PATH
+          $cleanPath="$env:SystemRoot\System32;$env:SystemRoot"
           $app=$null
           try {
-            $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
             $env:NEXTPLAN_LOCAL_PYTHON='C:\definitely-not-python\python.exe'
             $env:PYTHONHOME='C:\definitely-not-python'
             $env:PYTHONPATH='C:\definitely-not-python'
             $env:NODE_PATH='C:\definitely-not-node'
+
+            # The installed product inherits a machine environment with no dev tools.
+            # Restore PATH only in this CI harness after the app is already running so
+            # Node can drive the browser-emulation acceptance checks.
+            $env:PATH=$cleanPath
             $app=Start-Process $desktop.FullName -PassThru
+            $env:PATH=$oldPath
+
             $health=$null
             for($i=0;$i -lt 75;$i++){try{$health=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($health.status -eq 'ok'){break}}catch{};Start-Sleep 1}
             if(-not $health -or $health.runtime -ne 'nextplan-local-core-v4'){throw 'Local Core failed'}
@@ -120,7 +127,11 @@ jobs:
             Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue | ForEach-Object {Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue}
             Start-Sleep 2
 
+            # Restart under the same no-development-tools environment, then restore
+            # PATH only for the CI driver after process creation.
+            $env:PATH=$cleanPath
             $app=Start-Process $desktop.FullName -PassThru
+            $env:PATH=$oldPath
             $health=$null
             for($i=0;$i -lt 75;$i++){try{$health=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($health.status -eq 'ok'){break}}catch{};Start-Sleep 1}
             if(-not $health){throw 'Local Core failed after restart'}
