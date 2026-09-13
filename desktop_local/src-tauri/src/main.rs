@@ -39,40 +39,30 @@ fn core_config(state: State<'_, CoreRuntime>) -> CoreConfig {
 fn header_value(request: &str, name: &str) -> Option<String> {
     request.lines().skip(1).find_map(|line| {
         let (key, value) = line.split_once(':')?;
-        if key.trim().eq_ignore_ascii_case(name) {
-            Some(value.trim().to_string())
-        } else {
-            None
-        }
+        if key.trim().eq_ignore_ascii_case(name) { Some(value.trim().to_string()) } else { None }
     })
 }
 
-fn extension_identity(request: &str) -> Option<(String, String)> {
+fn extension_origin(request: &str) -> Option<String> {
     let origin = header_value(request, "Origin")?;
-    let extension_id = header_value(request, "X-NextPlan-Extension-Id")?;
-    if !origin.starts_with("chrome-extension://") {
-        return None;
-    }
+    if !origin.starts_with("chrome-extension://") { return None; }
     let origin_id = origin.trim_start_matches("chrome-extension://").trim_end_matches('/');
-    let valid_id = !extension_id.is_empty()
-        && extension_id.len() <= 128
-        && extension_id.chars().all(|c| c.is_ascii_alphanumeric());
-    if valid_id && origin_id == extension_id {
-        Some((origin, extension_id))
-    } else {
-        None
-    }
+    let valid_id = !origin_id.is_empty() && origin_id.len() <= 128 && origin_id.chars().all(|c| c.is_ascii_alphanumeric());
+    if valid_id { Some(origin) } else { None }
+}
+
+fn extension_identity(request: &str) -> Option<(String, String)> {
+    let origin = extension_origin(request)?;
+    let extension_id = header_value(request, "X-NextPlan-Extension-Id")?;
+    let origin_id = origin.trim_start_matches("chrome-extension://").trim_end_matches('/');
+    let valid_id = !extension_id.is_empty() && extension_id.len() <= 128 && extension_id.chars().all(|c| c.is_ascii_alphanumeric());
+    if valid_id && origin_id == extension_id { Some((origin, extension_id)) } else { None }
 }
 
 fn write_http_response(stream: &mut TcpStream, status: &str, origin: Option<&str>, body: &str) {
-    let mut headers = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n",
-        body.as_bytes().len()
-    );
+    let mut headers = format!("HTTP/1.1 {status}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n", body.as_bytes().len());
     if let Some(origin) = origin {
-        headers.push_str(&format!(
-            "Access-Control-Allow-Origin: {origin}\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, X-NextPlan-Extension-Id\r\nVary: Origin\r\n"
-        ));
+        headers.push_str(&format!("Access-Control-Allow-Origin: {origin}\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, X-NextPlan-Extension-Id\r\nVary: Origin\r\n"));
     }
     headers.push_str("\r\n");
     let _ = stream.write_all(headers.as_bytes());
@@ -84,16 +74,12 @@ fn reset_persistent_pairing(core_port: u16, token: &str) -> bool {
     for _ in 0..50 {
         if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", core_port)) {
             let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-            let request = format!(
-                "POST /pairing/reset HTTP/1.1\r\nHost: 127.0.0.1:{core_port}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
-            );
+            let request = format!("POST /pairing/reset HTTP/1.1\r\nHost: 127.0.0.1:{core_port}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}");
             if stream.write_all(request.as_bytes()).is_ok() {
                 let mut response = [0u8; 512];
                 if let Ok(n) = stream.read(&mut response) {
                     let first = String::from_utf8_lossy(&response[..n]);
-                    if first.starts_with("HTTP/1.1 200") || first.starts_with("HTTP/1.0 200") {
-                        return true;
-                    }
+                    if first.starts_with("HTTP/1.1 200") || first.starts_with("HTTP/1.0 200") { return true; }
                 }
             }
         }
@@ -102,89 +88,34 @@ fn reset_persistent_pairing(core_port: u16, token: &str) -> bool {
     false
 }
 
-fn handle_bridge_connection(
-    mut stream: TcpStream,
-    core_port: u16,
-    token: &str,
-    claimed_extension_id: &Arc<Mutex<Option<String>>>,
-) {
+fn handle_bridge_connection(mut stream: TcpStream, core_port: u16, token: &str, claimed_extension_id: &Arc<Mutex<Option<String>>>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let mut buffer = [0u8; 8192];
-    let n = match stream.read(&mut buffer) {
-        Ok(n) if n > 0 => n,
-        _ => return,
-    };
+    let n = match stream.read(&mut buffer) { Ok(n) if n > 0 => n, _ => return };
     let request = String::from_utf8_lossy(&buffer[..n]).to_string();
     let first_line = request.lines().next().unwrap_or("");
-    let identity = extension_identity(&request);
-
     if first_line.starts_with("OPTIONS ") {
-        if let Some((origin, _)) = identity {
-            write_http_response(&mut stream, "204 No Content", Some(&origin), "");
-        } else {
-            write_http_response(&mut stream, "403 Forbidden", None, "{\"error\":\"extension_origin_required\"}");
-        }
+        if let Some(origin) = extension_origin(&request) { write_http_response(&mut stream, "204 No Content", Some(&origin), ""); }
+        else { write_http_response(&mut stream, "403 Forbidden", None, "{\"error\":\"extension_origin_required\"}"); }
         return;
     }
-
-    if !first_line.starts_with("POST /bridge/bootstrap ") {
-        write_http_response(&mut stream, "404 Not Found", None, "{\"error\":\"not_found\"}");
-        return;
-    }
-
-    let Some((origin, extension_id)) = identity else {
-        write_http_response(&mut stream, "403 Forbidden", None, "{\"error\":\"extension_origin_required\"}");
-        return;
-    };
-
+    if !first_line.starts_with("POST /bridge/bootstrap ") { write_http_response(&mut stream, "404 Not Found", None, "{\"error\":\"not_found\"}"); return; }
+    let Some((origin, extension_id)) = extension_identity(&request) else { write_http_response(&mut stream, "403 Forbidden", None, "{\"error\":\"extension_origin_required\"}"); return; };
     let allowed = match claimed_extension_id.lock() {
-        Ok(mut claimed) => match claimed.as_ref() {
-            Some(existing) => existing == &extension_id,
-            None => {
-                *claimed = Some(extension_id.clone());
-                true
-            }
-        },
+        Ok(mut claimed) => match claimed.as_ref() { Some(existing) => existing == &extension_id, None => { *claimed = Some(extension_id.clone()); true } },
         Err(_) => false,
     };
-    if !allowed {
-        write_http_response(
-            &mut stream,
-            "409 Conflict",
-            Some(&origin),
-            "{\"error\":\"different_extension_already_connected\"}",
-        );
-        return;
-    }
-
-    if !reset_persistent_pairing(core_port, token) {
-        write_http_response(
-            &mut stream,
-            "503 Service Unavailable",
-            Some(&origin),
-            "{\"error\":\"local_core_not_ready\"}",
-        );
-        return;
-    }
-
-    let body = format!(
-        "{{\"status\":\"connected\",\"endpoint\":\"http://127.0.0.1:{core_port}\",\"token\":\"{token}\",\"session\":\"desktop-bootstrap\"}}"
-    );
+    if !allowed { write_http_response(&mut stream, "409 Conflict", Some(&origin), "{\"error\":\"different_extension_already_connected\"}"); return; }
+    if !reset_persistent_pairing(core_port, token) { write_http_response(&mut stream, "503 Service Unavailable", Some(&origin), "{\"error\":\"local_core_not_ready\"}"); return; }
+    let body = format!("{{\"status\":\"connected\",\"endpoint\":\"http://127.0.0.1:{core_port}\",\"token\":\"{token}\",\"session\":\"desktop-bootstrap\"}}");
     write_http_response(&mut stream, "200 OK", Some(&origin), &body);
 }
 
 fn start_browser_bootstrap_bridge(core_port: u16, bridge_port: u16, token: String) {
     thread::spawn(move || {
-        let listener = match TcpListener::bind(("127.0.0.1", bridge_port)) {
-            Ok(listener) => listener,
-            Err(_) => return,
-        };
+        let listener = match TcpListener::bind(("127.0.0.1", bridge_port)) { Ok(listener) => listener, Err(_) => return };
         let claimed_extension_id = Arc::new(Mutex::new(None::<String>));
-        for connection in listener.incoming() {
-            if let Ok(stream) = connection {
-                handle_bridge_connection(stream, core_port, &token, &claimed_extension_id);
-            }
-        }
+        for connection in listener.incoming() { if let Ok(stream) = connection { handle_bridge_connection(stream, core_port, &token, &claimed_extension_id); } }
     });
 }
 
@@ -193,95 +124,43 @@ fn main() {
     let bridge_port = 47124u16;
     let bootstrap_token = Uuid::new_v4().simple().to_string();
     let bridge_token = bootstrap_token.clone();
-    let runtime = CoreRuntime {
-        endpoint: format!("http://127.0.0.1:{port}"),
-        token: bootstrap_token,
-        mode: Mutex::new("not-started".into()),
-        child: Mutex::new(None),
-        start_error: Mutex::new(None),
-    };
-
+    let runtime = CoreRuntime { endpoint: format!("http://127.0.0.1:{port}"), token: bootstrap_token, mode: Mutex::new("not-started".into()), child: Mutex::new(None), start_error: Mutex::new(None) };
     let app = tauri::Builder::default()
         .manage(runtime)
         .invoke_handler(tauri::generate_handler![core_config])
         .setup(move |app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            let log_dir = data_dir.join("logs");
-            std::fs::create_dir_all(&log_dir)?;
+            let log_dir = data_dir.join("logs"); std::fs::create_dir_all(&log_dir)?;
             let db_path = data_dir.join("nextplan.db");
             let state = app.state::<CoreRuntime>();
-
             let resource_dir = app.path().resource_dir()?;
-            let bundled_core = resource_dir
-                .join("resources")
-                .join(if cfg!(target_os = "windows") { "nextplan-core.exe" } else { "nextplan-core" });
-
+            let bundled_core = resource_dir.join("resources").join(if cfg!(target_os = "windows") { "nextplan-core.exe" } else { "nextplan-core" });
             let mut command;
             if bundled_core.is_file() {
                 command = Command::new(&bundled_core);
-                if let Ok(mut mode) = state.mode.lock() {
-                    *mode = "bundled-sidecar".into();
-                }
+                if let Ok(mut mode) = state.mode.lock() { *mode = "bundled-sidecar".into(); }
             } else {
-                // Development-only fallback. Release acceptance requires the
-                // bundled sidecar path, so end users never need Python.
-                let python = std::env::var("NEXTPLAN_LOCAL_PYTHON").unwrap_or_else(|_| {
-                    if cfg!(target_os = "windows") { "python".into() } else { "python3".into() }
-                });
-                command = Command::new(python);
-                command.args(["-m", "mcp_server.local_core_v4"]);
-                let repo_root = std::env::var("NEXTPLAN_LOCAL_REPO_ROOT")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."));
-                if repo_root.exists() {
-                    command.current_dir(repo_root);
-                }
-                if let Ok(mut mode) = state.mode.lock() {
-                    *mode = "python-development-fallback".into();
-                }
+                let python = std::env::var("NEXTPLAN_LOCAL_PYTHON").unwrap_or_else(|_| if cfg!(target_os = "windows") { "python".into() } else { "python3".into() });
+                command = Command::new(python); command.args(["-m", "mcp_server.local_core_v4"]);
+                let repo_root = std::env::var("NEXTPLAN_LOCAL_REPO_ROOT").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."));
+                if repo_root.exists() { command.current_dir(repo_root); }
+                if let Ok(mut mode) = state.mode.lock() { *mode = "python-development-fallback".into(); }
             }
-
             let log_path = log_dir.join("local-core.log");
-            let stdout = OpenOptions::new().create(true).append(true).open(&log_path)?;
-            let stderr = stdout.try_clone()?;
-            command
-                .env("NEXTPLAN_LOCAL_DB", &db_path)
-                .env("NEXTPLAN_LOCAL_PORT", port.to_string())
-                .env("NEXTPLAN_LOCAL_BOOTSTRAP_TOKEN", &state.token)
-                .stdin(Stdio::null())
-                .stdout(Stdio::from(stdout))
-                .stderr(Stdio::from(stderr));
-
+            let stdout = OpenOptions::new().create(true).append(true).open(&log_path)?; let stderr = stdout.try_clone()?;
+            command.env("NEXTPLAN_LOCAL_DB", &db_path).env("NEXTPLAN_LOCAL_PORT", port.to_string()).env("NEXTPLAN_LOCAL_BOOTSTRAP_TOKEN", &state.token).stdin(Stdio::null()).stdout(Stdio::from(stdout)).stderr(Stdio::from(stderr));
             match command.spawn() {
-                Ok(child) => {
-                    if let Ok(mut slot) = state.child.lock() {
-                        *slot = Some(child);
-                    }
-                    start_browser_bootstrap_bridge(port, bridge_port, bridge_token.clone());
-                }
-                Err(err) => {
-                    if let Ok(mut slot) = state.start_error.lock() {
-                        *slot = Some(err.to_string());
-                    }
-                }
+                Ok(child) => { if let Ok(mut slot) = state.child.lock() { *slot = Some(child); } start_browser_bootstrap_bridge(port, bridge_port, bridge_token.clone()); }
+                Err(err) => { if let Ok(mut slot) = state.start_error.lock() { *slot = Some(err.to_string()); } }
             }
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("failed to build NextPlan desktop app");
-
+        .build(tauri::generate_context!()).expect("failed to build NextPlan desktop app");
     app.run(|handle, event| {
         if matches!(event, RunEvent::Exit) {
             let state = handle.state::<CoreRuntime>();
-            let lock_result = state.child.lock();
-            if let Ok(mut slot) = lock_result {
-                if let Some(child) = slot.as_mut() {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                }
-                *slot = None;
-            }
+            if let Ok(mut slot) = state.child.lock() { if let Some(child) = slot.as_mut() { let _ = child.kill(); let _ = child.wait(); } *slot = None; }
         }
     });
 }
