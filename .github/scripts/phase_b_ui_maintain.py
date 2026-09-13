@@ -85,5 +85,26 @@ layout_fix = '''
 if '/* NEXTPLAN APPLE LAYOUT FIX v2 */' not in s:
     s = s.replace('</style>', layout_fix + '\n</style>', 1)
 
+# Normalize the three user-reported icon issues.
+old_progress = '<div class="stat-icon si-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 1-6.4 2.7"/><path d="M3 3v6h6"/></svg></div>'
+new_progress = '<div class="stat-icon si-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="m10 8 6 4-6 4z" fill="currentColor" stroke="none"/></svg></div>'
+s = s.replace(old_progress, new_progress)
+
+settings_svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.75v2.1m0 14.3v2.1M2.75 12h2.1m14.3 0h2.1M5.45 5.45l1.48 1.48m10.14 10.14 1.48 1.48M18.55 5.45l-1.48 1.48M6.93 17.07l-1.48 1.48"/><circle cx="12" cy="12" r="3.75"/></svg>'
+s = re.sub(r'(<button class="settings-btn" id="settingsNav">)<svg.*?</svg>(Settings</button>)', lambda m: m.group(1) + settings_svg + m.group(2), s, count=1)
+
+old_resource_icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8.5 13.5 6 16a4 4 0 1 0 5.7 5.6l3-3"/><path d="m15.5 10.5 2.5-2.5a4 4 0 1 0-5.7-5.6l-3 3"/><path d="m9 15 6-6"/></svg>'
+new_resource_icon = '<svg class="empty-resource-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5 8 16a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 0"/><path d="m14.5 9.5 1.5-1.5a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 0"/><path d="m9 15 6-6"/></svg>'
+s = s.replace(old_resource_icon, new_resource_icon)
+
+icon_css_marker = '/* NEXTPLAN ICON FIX v1 */'
+if icon_css_marker not in s:
+    icon_css = '''
+/* NEXTPLAN ICON FIX v1 */
+.settings-btn svg{width:20px!important;height:20px!important;flex:0 0 20px!important;stroke-width:1.9!important}
+.empty-resource-icon{width:28px!important;height:28px!important;color:#96a2b3!important;margin:0 auto 10px!important}
+'''
+    s = s.replace('</style>', icon_css + '\n</style>', 1)
+
 p.write_text(s, encoding='utf-8')
-print('Phase B UI contract verified; Apple theme retained; Projects list layout, task alignment, and hero decoration fixed.')
+print('Phase B UI contract verified; Apple theme retained; layout fixes retained; three reported icons normalized.')
