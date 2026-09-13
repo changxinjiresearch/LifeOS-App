@@ -2,7 +2,7 @@
   if (window.__NEXTPLAN_LOCAL_V013__) return;
   window.__NEXTPLAN_LOCAL_V013__ = true;
 
-  const seen = new Set();
+  const inflight = new Set();
   let timer = null;
   let toastTimer = null;
 
@@ -60,6 +60,7 @@
     if (result.status === "auto_synced") toast(`NextPlan · Synced${result.label ? `: ${result.label}` : ""}`, "ok");
     else if (result.status === "queued") toast(`NextPlan · Change detected${result.label ? `: ${result.label}` : ""}. Open the extension to confirm.`, "info", 5600);
     else if (result.status === "informational") toast(`NextPlan · ${result.label || "No change needed"}`, "info");
+    else if (result.status === "duplicate") return;
     else if (result.status === "no_change") toast("NextPlan · No executable change detected", "warn", 5200);
     else if (result.status === "needs_desktop") toast(result.error || "Open NextPlan Desktop to connect.", "warn", 6000);
     else if (result.status === "error") toast(`NextPlan Local: ${result.error || "Connection failed"}`, "bad", 6500);
@@ -73,9 +74,8 @@
     const assistantText = textOf(assistants[assistants.length - 1]);
     if (!originalUserText || !assistantText) return;
     const fingerprint = stableKey(originalUserText, users.length);
-    if (seen.has(fingerprint)) return;
-    seen.add(fingerprint);
-    if (seen.size > 100) seen.delete(seen.values().next().value);
+    if (inflight.has(fingerprint)) return;
+    inflight.add(fingerprint);
     chrome.runtime.sendMessage({
       type: "NEXTPLAN_TURN",
       turn: {
@@ -85,7 +85,17 @@
         title: document.title || "ChatGPT",
         url: location.href
       }
-    }).then(handle).catch(err => toast(`NextPlan Local: ${err?.message || "Connection failed"}`, "bad", 6500));
+    }).then(result => {
+      inflight.delete(fingerprint);
+      handle(result);
+      if (result?.status === "needs_desktop" || result?.status === "error") {
+        setTimeout(schedule, 1800);
+      }
+    }).catch(err => {
+      inflight.delete(fingerprint);
+      toast(`NextPlan Local: ${err?.message || "Connection failed"}`, "bad", 6500);
+      setTimeout(schedule, 1800);
+    });
   }
 
   function schedule() {
