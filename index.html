@@ -245,6 +245,61 @@ html[data-theme="dark"] .settings-btn:hover{background:#111c2d}
 .settings-btn svg{width:20px!important;height:20px!important;flex:0 0 20px!important;stroke-width:1.9!important}
 .empty-resource-icon{width:28px!important;height:28px!important;color:#96a2b3!important;margin:0 auto 10px!important}
 
+
+/* NEXTPLAN MINI CALENDAR NAV FIX v1 */
+.mini-cal-head{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:12px!important;
+  margin-bottom:14px!important;
+}
+.mini-cal-head>.row{
+  display:inline-flex!important;
+  align-items:center!important;
+  flex-wrap:nowrap!important;
+  gap:0!important;
+  overflow:hidden!important;
+  border:1px solid rgba(105,117,135,.11)!important;
+  border-radius:11px!important;
+  background:rgba(255,255,255,.58)!important;
+  box-shadow:0 3px 12px rgba(54,65,82,.045)!important;
+}
+.mini-cal-head .round-btn{
+  width:32px!important;
+  height:30px!important;
+  min-width:32px!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  color:#596579!important;
+  font-size:19px!important;
+  line-height:1!important;
+  display:grid!important;
+  place-items:center!important;
+}
+.mini-cal-head .round-btn+.round-btn{
+  border-left:1px solid rgba(105,117,135,.11)!important;
+}
+.mini-cal-head .round-btn:hover{
+  background:rgba(75,143,247,.08)!important;
+  color:var(--apple-blue)!important;
+}
+.mini-cal-head .side-title{
+  font-size:15px!important;
+  font-weight:700!important;
+  letter-spacing:-.2px!important;
+}
+html[data-theme="dark"] .mini-cal-head>.row{
+  background:rgba(45,51,62,.72)!important;
+  border-color:rgba(255,255,255,.10)!important;
+}
+html[data-theme="dark"] .mini-cal-head .round-btn+.round-btn{
+  border-left-color:rgba(255,255,255,.10)!important;
+}
+
 </style>
 </head>
 <body>
