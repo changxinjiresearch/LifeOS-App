@@ -1,0 +1,252 @@
+name: NextPlan Desktop v0.1.1 Auto Bridge Release
+
+on:
+  push:
+    branches: [release-builder-rescue]
+    paths:
+      - '.github/workflows/rescue-desktop-release-v011.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  SEED_RUN_ID: '34742831144'
+  VERSION: '0.1.1'
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: apple-silicon
+            seed: rescue-core-macos-arm64
+            uname: arm64
+          - runner: macos-15-intel
+            arch: intel
+            seed: rescue-core-macos-x64
+            uname: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Download verified Local Core seed
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.seed }}
+          path: core-seed
+          github-token: ${{ github.token }}
+          repository: changxinjiresearch/LifeOS-App
+          run-id: ${{ env.SEED_RUN_ID }}
+      - name: Prepare unified UI, bridge, and native core
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = '${{ matrix.uname }}'
+          NEXTPLAN_WEB_UI_REF=main python3 scripts/sync_web_ui_to_desktop.py
+          mkdir -p desktop_local/src-tauri/resources desktop_local/src-tauri/icons
+          cp core-seed/nextplan-core desktop_local/src-tauri/resources/nextplan-core
+          chmod +x desktop_local/src-tauri/resources/nextplan-core
+          npx --yes @tauri-apps/cli@2 icon icon.svg --output desktop_local/src-tauri/icons
+          node --check desktop_local/ui/desktop-adapter.js
+          node --check desktop_local/ui/web-runtime.js
+          node --check chrome_extension_local/background.js
+          node --check chrome_extension_local/content.js
+          node --check chrome_extension_local/popup.js
+          node --check chrome_extension_local/options.js
+          grep -q 'POST /bridge/bootstrap' desktop_local/src-tauri/src/main.rs
+          grep -q '47124' desktop_local/src-tauri/src/main.rs
+          ! grep -q 'Pairing code' chrome_extension_local/options.html
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('chrome_extension_local/manifest.json').read_text())
+          assert m['version']=='0.1.1'
+          s=json.loads(Path('desktop_local/ui/web-ui-source.json').read_text())
+          assert s['source_repository']=='changxinjiresearch/LifeOS-App'
+          assert s['source_ref']=='main'
+          print('STATIC_AUTO_BRIDGE_CONTRACT_PASS')
+          PY
+      - name: Rust compile check
+        run: cargo check --manifest-path desktop_local/src-tauri/Cargo.toml
+      - name: Build app and DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes @tauri-apps/cli@2 build --bundles app,dmg --config desktop_local/src-tauri/tauri.conf.json
+          APP="$(find desktop_local/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
+          DMG="$(find desktop_local/src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$APP" && test -d "$APP"
+          test -n "$DMG" && test -f "$DMG"
+          test -x "$APP/Contents/Resources/resources/nextplan-core"
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+      - name: Zero-dependency app and automatic browser bootstrap acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          DESKTOP="$APP/Contents/MacOS/nextplan-local-desktop"
+          cleanup(){ pkill -f "$DESKTOP" 2>/dev/null || true; pkill -f 'nextplan-core' 2>/dev/null || true; rm -rf "$TMP"; }
+          trap cleanup EXIT
+          mkdir -p "$TMP/home"
+          /usr/bin/env -i HOME="$TMP/home" TMPDIR="$TMP" PATH='/usr/bin:/bin:/usr/sbin:/sbin' NEXTPLAN_LOCAL_PYTHON=/definitely/missing/python3 PYTHONHOME=/definitely/missing/python PYTHONPATH=/definitely/missing/python NODE_PATH=/definitely/missing/node "$DESKTOP" >"$TMP/desktop.log" 2>&1 &
+          DESKTOP_PID=$!
+          ok=0; for i in {1..75}; do if /usr/bin/curl -fsS http://127.0.0.1:47123/healthz > "$TMP/health.json" 2>/dev/null; then ok=1; break; fi; /bin/sleep 1; done
+          if [[ "$ok" != 1 ]]; then cat "$TMP/desktop.log"; find "$TMP/home" -name local-core.log -exec cat {} \; 2>/dev/null || true; exit 1; fi
+          grep -q 'nextplan-local-core-v4' "$TMP/health.json"
+          EXT='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          ORIGIN="chrome-extension://$EXT"
+          /usr/bin/curl -sS -D "$TMP/preflight.h" -o /dev/null -X OPTIONS http://127.0.0.1:47124/bridge/bootstrap -H "Origin: $ORIGIN" -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type,x-nextplan-extension-id'
+          grep -q '204 No Content' "$TMP/preflight.h"
+          grep -qi "Access-Control-Allow-Origin: $ORIGIN" "$TMP/preflight.h"
+          /usr/bin/curl -fsS -X POST http://127.0.0.1:47124/bridge/bootstrap -H "Origin: $ORIGIN" -H "X-NextPlan-Extension-Id: $EXT" -H 'Content-Type: application/json' -d '{}' > "$TMP/bootstrap.json"
+          TOKEN="$(python3 -c 'import json;print(json.load(open("'"$TMP/bootstrap.json"'"))["token"])')"
+          test -n "$TOKEN"
+          /usr/bin/curl -fsS http://127.0.0.1:47123/state -H "Origin: $ORIGIN" -H "Authorization: Bearer $TOKEN" > "$TMP/state.json"
+          python3 -c 'import json; assert isinstance(json.load(open("'"$TMP/state.json"'"))["projects"], list)'
+          BAD=$(/usr/bin/curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:47124/bridge/bootstrap -H 'Origin: https://example.com' -H "X-NextPlan-Extension-Id: $EXT" -H 'Content-Type: application/json' -d '{}')
+          test "$BAD" = '403'
+          echo ZERO_DEPENDENCY_MACOS_ACCEPTANCE_PASS
+          echo AUTO_BROWSER_BOOTSTRAP_ACCEPTANCE_PASS
+          kill "$DESKTOP_PID" 2>/dev/null || true
+      - name: Package v0.1.1 release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release bridge-package
+          cp "$DMG" "release/NextPlan-v${VERSION}-macOS-${{ matrix.arch }}.dmg"
+          cp -R chrome_extension_local/. bridge-package/
+          (cd bridge-package && /usr/bin/zip -qr "../release/NextPlan-Local-Bridge-v${VERSION}.zip" .)
+          cp desktop_local/ui/web-ui-source.json release/web-ui-source.json
+          cat > release/BUILD-METADATA.txt <<EOF
+          canonical_web=changxinjiresearch/LifeOS-App@main
+          desktop_contract=auto-browser-bootstrap-v0.1.1
+          local_core_binary_source=verified-release@19bf8c01e95a83c1271b8fdd4679d5c4f49677ee
+          architecture=${{ matrix.arch }}
+          zero_dependency_acceptance=PASS
+          browser_bootstrap_acceptance=PASS
+          EOF
+          shasum -a 256 release/* > release/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nextplan-v0.1.1-macos-${{ matrix.arch }}-auto-bridge
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Download verified old Windows release seed
+        uses: actions/download-artifact@v4
+        with:
+          name: rescue-old-windows-release
+          path: old-seed
+          github-token: ${{ github.token }}
+          repository: changxinjiresearch/LifeOS-App
+          run-id: ${{ env.SEED_RUN_ID }}
+      - name: Recover verified Windows Local Core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive 'old-seed/old-windows-release.zip' -DestinationPath 'old-release' -Force
+          $oldInstaller=Get-ChildItem old-release -Filter '*.exe' -File -Recurse | Select-Object -First 1
+          $p=Start-Process $oldInstaller.FullName -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'old installer failed'}
+          $core=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-core.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if(-not $core){throw 'verified nextplan-core.exe not found'}
+          New-Item -ItemType Directory 'desktop_local/src-tauri/resources' -Force | Out-Null
+          Copy-Item $core.FullName 'desktop_local/src-tauri/resources/nextplan-core.exe' -Force
+      - name: Prepare unified UI and bridge
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:NEXTPLAN_WEB_UI_REF='main'
+          python scripts/sync_web_ui_to_desktop.py
+          npx --yes @tauri-apps/cli@2 icon icon.svg --output desktop_local/src-tauri/icons
+          node --check desktop_local/ui/desktop-adapter.js
+          node --check desktop_local/ui/web-runtime.js
+          node --check chrome_extension_local/background.js
+          node --check chrome_extension_local/content.js
+          node --check chrome_extension_local/popup.js
+          node --check chrome_extension_local/options.js
+          if((Get-Content chrome_extension_local/options.html -Raw) -match 'Pairing code'){throw 'legacy pairing UI remains'}
+          if((Get-Content desktop_local/src-tauri/src/main.rs -Raw) -notmatch 'POST /bridge/bootstrap'){throw 'bootstrap bridge missing'}
+      - name: Rust compile check
+        run: cargo check --manifest-path desktop_local/src-tauri/Cargo.toml
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          npx --yes @tauri-apps/cli@2 build --bundles nsis --config desktop_local/src-tauri/tauri.conf.json
+          $installer=Get-ChildItem 'desktop_local/src-tauri/target/release/bundle/nsis' -Filter '*.exe' | Select-Object -First 1
+          if(-not $installer){throw 'installer missing'}
+          New-Item -ItemType Directory release -Force | Out-Null
+          Copy-Item $installer.FullName "release/NextPlan-Setup-v$env:VERSION.exe" -Force
+      - name: Zero-dependency app and automatic browser bootstrap acceptance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $installer=(Resolve-Path "release/NextPlan-Setup-v$env:VERSION.exe").Path
+          $p=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'installer failed'}
+          $desktop=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-local-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if(-not $desktop){throw 'installed desktop missing'}
+          $oldPath=$env:PATH
+          try{
+            $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+            $env:NEXTPLAN_LOCAL_PYTHON='C:\definitely-not-python\python.exe';$env:PYTHONHOME='C:\definitely-not-python';$env:PYTHONPATH='C:\definitely-not-python';$env:NODE_PATH='C:\definitely-not-node'
+            $app=Start-Process $desktop.FullName -PassThru
+            $health=$null
+            for($i=0;$i -lt 75;$i++){try{$health=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($health.status -eq 'ok'){break}}catch{};Start-Sleep 1}
+            if(-not $health -or $health.runtime -ne 'nextplan-local-core-v4'){throw 'Local Core failed'}
+            $ext='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';$origin="chrome-extension://$ext"
+            $pre=Invoke-WebRequest -Method Options -Uri http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$origin;'Access-Control-Request-Method'='POST';'Access-Control-Request-Headers'='content-type,x-nextplan-extension-id'}
+            if($pre.StatusCode -ne 204){throw 'preflight failed'}
+            $boot=Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$origin;'X-NextPlan-Extension-Id'=$ext} -ContentType 'application/json' -Body '{}'
+            if(-not $boot.token){throw 'bootstrap token missing'}
+            $state=Invoke-RestMethod -Uri http://127.0.0.1:47123/state -Headers @{Origin=$origin;Authorization="Bearer $($boot.token)"}
+            if($null -eq $state.projects){throw 'authorized state read failed'}
+            $bad=& curl.exe -s -o NUL -w '%{http_code}' -X POST http://127.0.0.1:47124/bridge/bootstrap -H 'Origin: https://example.com' -H "X-NextPlan-Extension-Id: $ext" -H 'Content-Type: application/json' -d '{}'
+            if($bad -ne '403'){throw "bad origin accepted: $bad"}
+            Write-Host ZERO_DEPENDENCY_WINDOWS_ACCEPTANCE_PASS
+            Write-Host AUTO_BROWSER_BOOTSTRAP_ACCEPTANCE_PASS
+          }finally{
+            $env:PATH=$oldPath
+            if($app){Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue}
+            Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue | ForEach-Object {Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue}
+          }
+      - name: Package v0.1.1 release
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'chrome_extension_local/*' -DestinationPath "release/NextPlan-Local-Bridge-v$env:VERSION.zip" -Force
+          Copy-Item desktop_local/ui/web-ui-source.json release/web-ui-source.json
+          @"
+          canonical_web=changxinjiresearch/LifeOS-App@main
+          desktop_contract=auto-browser-bootstrap-v0.1.1
+          local_core_binary_source=verified-release@19bf8c01e95a83c1271b8fdd4679d5c4f49677ee
+          architecture=windows-x64
+          zero_dependency_acceptance=PASS
+          browser_bootstrap_acceptance=PASS
+          "@ | Set-Content release/BUILD-METADATA.txt
+          Get-FileHash release/* -Algorithm SHA256 | ForEach-Object {"$($_.Hash)  $([IO.Path]::GetFileName($_.Path))"} | Set-Content release/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nextplan-v0.1.1-windows-auto-bridge
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
