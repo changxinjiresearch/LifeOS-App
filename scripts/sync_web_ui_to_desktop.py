@@ -33,7 +33,12 @@ def sha256(data: bytes) -> str:
 
 def normalise_local_ref(raw: str) -> str | None:
     value = raw.strip().split("#", 1)[0].split("?", 1)[0]
-    if not value or value.startswith(("http://", "https://", "data:", "blob:", "mailto:", "#", "/")):
+    if (
+        not value
+        or "${" in value
+        or "{{" in value
+        or value.startswith(("http://", "https://", "data:", "blob:", "mailto:", "javascript:", "#", "/"))
+    ):
         return None
     while value.startswith("./"):
         value = value[2:]
@@ -44,7 +49,7 @@ def normalise_local_ref(raw: str) -> str | None:
 
 
 def discover_local_refs(text: str) -> set[str]:
-    """Discover actual static-resource references, not arbitrary JS route strings."""
+    """Discover real static resources, excluding runtime-generated URLs/routes."""
     refs: set[str] = set()
     patterns = (
         r'''(?:src|href)=["']([^"']+)["']''',
