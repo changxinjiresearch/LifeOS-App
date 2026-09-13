@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nextplan-shell-v13-apple-web';
+const CACHE_NAME = 'nextplan-shell-v12-phase-c';
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './apple-web-v1.css'];
 const APPLE_STYLE_TAG = '<link rel="stylesheet" href="./apple-web-v1.css?v=apple-web-v1">';
 
