@@ -1,0 +1,167 @@
+name: NextPlan Windows v0.1.3 Final Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [release-builder-rescue]
+    paths:
+      - '.github/workflows/rescue-windows-v013-final.yml'
+      - 'scripts/v013_background_acceptance.js'
+      - 'scripts/v013_adapter_acceptance.js'
+      - 'chrome_extension_local/**'
+      - 'desktop_local/**'
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  SEED_RUN_ID: '34742831144'
+  VERSION: '0.1.3'
+  OFFICIAL_EXTENSION_ID: 'gbdcbnbdmkgjffjioohjfidjmchiggpc'
+
+jobs:
+  windows-v013-final:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Download verified unchanged Local Core seed
+        uses: actions/download-artifact@v4
+        with:
+          name: rescue-old-windows-release
+          path: old-seed
+          github-token: ${{ github.token }}
+          repository: changxinjiresearch/LifeOS-App
+          run-id: ${{ env.SEED_RUN_ID }}
+
+      - name: Recover verified Local Core and prepare v0.1.3 sources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive 'old-seed/old-windows-release.zip' -DestinationPath 'old-release' -Force
+          $oldInstaller=Get-ChildItem old-release -Filter '*.exe' -File -Recurse | Select-Object -First 1
+          if(-not $oldInstaller){throw 'old installer missing'}
+          $p=Start-Process $oldInstaller.FullName -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'old installer failed'}
+          $core=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-core.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if(-not $core){throw 'verified nextplan-core.exe not found'}
+          New-Item -ItemType Directory 'desktop_local/src-tauri/resources' -Force | Out-Null
+          Copy-Item $core.FullName 'desktop_local/src-tauri/resources/nextplan-core.exe' -Force
+          $env:NEXTPLAN_WEB_UI_REF='main'
+          python scripts/sync_web_ui_to_desktop.py
+          npx --yes @tauri-apps/cli@2 icon icon.svg --output desktop_local/src-tauri/icons
+          node --check chrome_extension_local/background.js
+          node --check chrome_extension_local/content.js
+          node --check scripts/v013_background_acceptance.js
+          node --check scripts/v013_adapter_acceptance.js
+          $manifest=Get-Content chrome_extension_local/manifest.json -Raw | ConvertFrom-Json
+          if($manifest.version -ne '0.1.3'){throw 'Bridge manifest is not v0.1.3'}
+          $content=Get-Content chrome_extension_local/content.js -Raw
+          if($content -notmatch 'const inflight = new Set'){throw 'retry-safe inflight contract missing'}
+          if($content -match 'seen\.add\(fingerprint\)'){throw 'eager seen bug returned'}
+
+      - name: Build Windows GUI installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          cargo check --manifest-path desktop_local/src-tauri/Cargo.toml
+          npx --yes @tauri-apps/cli@2 build --bundles nsis --config desktop_local/src-tauri/tauri.conf.json
+          $desktop=(Resolve-Path 'desktop_local/src-tauri/target/release/nextplan-local-desktop.exe').Path
+          $bytes=[IO.File]::ReadAllBytes($desktop)
+          $peOffset=[BitConverter]::ToInt32($bytes,0x3c)
+          $subsystem=[BitConverter]::ToUInt16($bytes,$peOffset+24+68)
+          if($subsystem -ne 2){throw "desktop PE subsystem is $subsystem, expected Windows GUI (2)"}
+          $rust=Get-Content desktop_local/src-tauri/src/main.rs -Raw
+          if($rust -notmatch 'CREATE_NO_WINDOW'){throw 'hidden Local Core process flag missing'}
+          $installer=Get-ChildItem 'desktop_local/src-tauri/target/release/bundle/nsis' -Filter '*.exe' | Select-Object -First 1
+          if(-not $installer){throw 'NSIS installer missing'}
+          New-Item -ItemType Directory release -Force | Out-Null
+          Copy-Item $installer.FullName "release/NextPlan-Setup-v$env:VERSION.exe" -Force
+
+      - name: Real install and replay user failures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $installer=(Resolve-Path "release/NextPlan-Setup-v$env:VERSION.exe").Path
+          $p=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'installer failed'}
+          $desktop=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-local-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if(-not $desktop){throw 'installed desktop missing'}
+          $oldPath=$env:PATH
+          $app=$null
+          try {
+            $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+            $env:NEXTPLAN_LOCAL_PYTHON='C:\definitely-not-python\python.exe'
+            $env:PYTHONHOME='C:\definitely-not-python'
+            $env:PYTHONPATH='C:\definitely-not-python'
+            $env:NODE_PATH='C:\definitely-not-node'
+            $app=Start-Process $desktop.FullName -PassThru
+            $health=$null
+            for($i=0;$i -lt 75;$i++){try{$health=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($health.status -eq 'ok'){break}}catch{};Start-Sleep 1}
+            if(-not $health -or $health.runtime -ne 'nextplan-local-core-v4'){throw 'Local Core failed'}
+            $origin="chrome-extension://$env:OFFICIAL_EXTENSION_ID"
+            $boot=Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$origin;'X-NextPlan-Extension-Id'=$env:OFFICIAL_EXTENSION_ID} -ContentType application/json -Body '{}'
+            if(-not $boot.token){throw 'bootstrap token missing'}
+            $env:NEXTPLAN_TEST_TOKEN=$boot.token
+            node scripts/v013_background_acceptance.js
+            if($LASTEXITCODE -ne 0){throw 'real Bridge acceptance failed'}
+            node scripts/v013_adapter_acceptance.js
+            if($LASTEXITCODE -ne 0){throw 'calendar adapter acceptance failed'}
+            Write-Host V013_CREATE_STATUS_CALENDAR_PASS
+
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            $app=$null
+            Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue | ForEach-Object {Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue}
+            Start-Sleep 2
+
+            $app=Start-Process $desktop.FullName -PassThru
+            $health=$null
+            for($i=0;$i -lt 75;$i++){try{$health=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($health.status -eq 'ok'){break}}catch{};Start-Sleep 1}
+            if(-not $health){throw 'Local Core failed after restart'}
+            $boot2=Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$origin;'X-NextPlan-Extension-Id'=$env:OFFICIAL_EXTENSION_ID} -ContentType application/json -Body '{}'
+            $state2=Invoke-RestMethod http://127.0.0.1:47123/state -Headers @{Origin=$origin;Authorization="Bearer $($boot2.token)"}
+            $project2=$state2.projects | Where-Object {$_.name -eq '持久化测试'} | Select-Object -First 1
+            if(-not $project2){throw '持久化测试 lost after restart'}
+            if($project2.status -ne 'waiting'){throw "waiting status lost after restart: $($project2.status)"}
+            $compat2=$state2.deadlines | Where-Object {"$($_.title)" -like '__NP_CAL_V1__:*'} | Select-Object -First 1
+            if(-not $compat2){throw 'calendar compatibility record lost after restart'}
+            Write-Host V013_RESTART_PERSISTENCE_PASS
+          } finally {
+            $env:PATH=$oldPath
+            if($app){Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue}
+            Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue | ForEach-Object {Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue}
+          }
+
+      - name: Package final v0.1.3 acceptance release
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'chrome_extension_local/*' -DestinationPath "release/NextPlan-Local-Bridge-v$env:VERSION-Windows.zip" -Force
+          Copy-Item desktop_local/ui/web-ui-source.json release/web-ui-source.json
+          @(
+            'canonical_web=changxinjiresearch/LifeOS-App@main',
+            'desktop_contract=windows-v0.1.3-final-acceptance',
+            'architecture=windows-x64',
+            'zero_dependency_acceptance=PASS',
+            'arbitrary_project_create=PASS',
+            'project_status_update=PASS',
+            'calendar_write=PASS',
+            'calendar_ui_decode=PASS',
+            'restart_persistence=PASS',
+            'transient_retry_contract=PASS',
+            'no_console=PASS',
+            'secure_browser_bootstrap=PASS'
+          ) | Set-Content release/BUILD-METADATA.txt
+          Get-FileHash release/* -Algorithm SHA256 | ForEach-Object {"$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))"} | Set-Content release/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nextplan-v0.1.3-windows-final
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
