@@ -106,5 +106,66 @@ if icon_css_marker not in s:
 '''
     s = s.replace('</style>', icon_css + '\n</style>', 1)
 
+# Keep the mini calendar month navigation compact and horizontal.
+# The two controls behave as one Apple-style segmented navigation control.
+calendar_nav_marker = '/* NEXTPLAN MINI CALENDAR NAV FIX v1 */'
+if calendar_nav_marker not in s:
+    calendar_nav_css = '''
+/* NEXTPLAN MINI CALENDAR NAV FIX v1 */
+.mini-cal-head{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:12px!important;
+  margin-bottom:14px!important;
+}
+.mini-cal-head>.row{
+  display:inline-flex!important;
+  align-items:center!important;
+  flex-wrap:nowrap!important;
+  gap:0!important;
+  overflow:hidden!important;
+  border:1px solid rgba(105,117,135,.11)!important;
+  border-radius:11px!important;
+  background:rgba(255,255,255,.58)!important;
+  box-shadow:0 3px 12px rgba(54,65,82,.045)!important;
+}
+.mini-cal-head .round-btn{
+  width:32px!important;
+  height:30px!important;
+  min-width:32px!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  color:#596579!important;
+  font-size:19px!important;
+  line-height:1!important;
+  display:grid!important;
+  place-items:center!important;
+}
+.mini-cal-head .round-btn+.round-btn{
+  border-left:1px solid rgba(105,117,135,.11)!important;
+}
+.mini-cal-head .round-btn:hover{
+  background:rgba(75,143,247,.08)!important;
+  color:var(--apple-blue)!important;
+}
+.mini-cal-head .side-title{
+  font-size:15px!important;
+  font-weight:700!important;
+  letter-spacing:-.2px!important;
+}
+html[data-theme="dark"] .mini-cal-head>.row{
+  background:rgba(45,51,62,.72)!important;
+  border-color:rgba(255,255,255,.10)!important;
+}
+html[data-theme="dark"] .mini-cal-head .round-btn+.round-btn{
+  border-left-color:rgba(255,255,255,.10)!important;
+}
+'''
+    s = s.replace('</style>', calendar_nav_css + '\n</style>', 1)
+
 p.write_text(s, encoding='utf-8')
-print('Phase B UI contract verified; Apple theme retained; layout fixes retained; three reported icons normalized.')
+print('Phase B UI contract verified; Apple theme retained; layout fixes retained; icons normalized; mini calendar navigation refined.')
