@@ -21,7 +21,7 @@ def fetch_bytes(name: str) -> bytes:
     print(f"fetch canonical asset: {name}", flush=True)
     req = urllib.request.Request(
         f"{BASE}/{name}",
-        headers={"User-Agent": "NextPlan-Desktop-Web-Parity-Sync/3.1"},
+        headers={"User-Agent": "NextPlan-Desktop-Web-Parity-Sync/3.2"},
     )
     with urllib.request.urlopen(req, timeout=30) as response:
         return response.read()
@@ -48,19 +48,29 @@ def normalise_local_ref(raw: str) -> str | None:
     return path.as_posix()
 
 
-def discover_local_refs(text: str) -> set[str]:
-    """Discover real static resources, excluding runtime-generated URLs/routes."""
+def _collect(pattern: str, text: str) -> set[str]:
     refs: set[str] = set()
-    patterns = (
-        r'''(?:src|href)=["']([^"']+)["']''',
-        r'''url\(\s*["']?([^"')]+)["']?\s*\)''',
-    )
-    for pattern in patterns:
-        for raw in re.findall(pattern, text, flags=re.I):
-            ref = normalise_local_ref(raw)
-            if ref:
-                refs.add(ref)
+    for raw in re.findall(pattern, text, flags=re.I | re.S):
+        ref = normalise_local_ref(raw)
+        if ref:
+            refs.add(ref)
     return refs
+
+
+def discover_css_refs(text: str) -> set[str]:
+    return _collect(r'''url\(\s*["']?([^"')]+)["']?\s*\)''', text)
+
+
+def discover_html_refs(text: str) -> set[str]:
+    refs = _collect(r'''(?:src|href)=["']([^"']+)["']''', text)
+    for style in re.findall(r'''<style\b[^>]*>(.*?)</style>''', text, flags=re.I | re.S):
+        refs |= discover_css_refs(style)
+    return refs
+
+
+def discover_local_refs(text: str) -> set[str]:
+    """Compatibility helper: discover static references in an HTML document."""
+    return discover_html_refs(text)
 
 
 def decode_text(name: str, data: bytes) -> str | None:
@@ -73,8 +83,20 @@ def decode_text(name: str, data: bytes) -> str | None:
         return None
 
 
+def child_refs(name: str, text: str) -> set[str]:
+    suffix = Path(name).suffix.lower()
+    if suffix == ".css":
+        return discover_css_refs(text)
+    if suffix == ".html":
+        return discover_html_refs(text)
+    # JavaScript, service-worker code and JSON can contain runtime URL(),
+    # href/src template strings and API routes. They are not static dependency
+    # declarations and must never be recursively interpreted as file paths.
+    return set()
+
+
 def fetch_asset_graph(source_index: str) -> dict[str, bytes]:
-    pending = discover_local_refs(source_index) | {"sw.js"}
+    pending = discover_html_refs(source_index) | {"sw.js"}
     fetched: dict[str, bytes] = {}
     while pending:
         name = pending.pop()
@@ -84,7 +106,7 @@ def fetch_asset_graph(source_index: str) -> dict[str, bytes]:
         fetched[name] = data
         text = decode_text(name, data)
         if text is not None:
-            pending |= discover_local_refs(text) - fetched.keys()
+            pending |= child_refs(name, text) - fetched.keys()
     return fetched
 
 
@@ -104,7 +126,6 @@ def adapt_runtime_for_desktop(canonical_runtime: str) -> str:
     end = canonical_runtime.find("\nfunction openSearch()", start)
     if start < 0 or end < 0:
         raise SystemExit("Could not locate canonical Web sync function")
-
     desktop_sync = (
         "async function sync(){if(busy)return;const c=getCfg(),adapter=window.__NEXTPLAN_STATE_ADAPTER__;"
         "if(!c.token){$('syncPill').className='sync-pill';$('syncText').textContent='Local';return}"
@@ -130,13 +151,9 @@ def main() -> None:
     match = pattern.search(source_index)
     if not match:
         raise SystemExit("Could not locate the canonical Web runtime script")
-
     canonical_runtime = match.group(1).strip() + "\n"
     runtime = adapt_runtime_for_desktop(canonical_runtime)
-    desktop_scripts = (
-        '<script src="./desktop-adapter.js"></script>\n'
-        '<script src="./web-runtime.js"></script>'
-    )
+    desktop_scripts = '<script src="./desktop-adapter.js"></script>\n<script src="./web-runtime.js"></script>'
     desktop_index = source_index[: match.start()] + desktop_scripts + match.group(2) + source_index[match.end() :]
     clear_generated_ui()
     (UI_DIR / "index.html").write_text(desktop_index, encoding="utf-8", newline="\n")
@@ -145,7 +162,6 @@ def main() -> None:
         target = UI_DIR / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
-
     manifest = {
         "source_repository": WEB_REPO,
         "source_ref": WEB_REF,
@@ -158,11 +174,7 @@ def main() -> None:
         "data_contract": "Web uses cloud state access; Desktop replaces only the state-read boundary with Local Core -> SQLite",
         "contract": "LifeOS-App is the only UI authority; desktop injects only the local data adapter",
     }
-    (UI_DIR / "web-ui-source.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    (UI_DIR / "web-ui-source.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     adapter_text = (UI_DIR / "desktop-adapter.js").read_text(encoding="utf-8")
     assert desktop_index.count('src="./desktop-adapter.js"') == 1
     assert desktop_index.count('src="./web-runtime.js"') == 1
