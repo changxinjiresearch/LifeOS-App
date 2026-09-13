@@ -70,6 +70,10 @@ s = s.replace('<b>还没有 Notes</b>明确说“把这个想法记下来作为�
 s = s.replace('<b>还没有资源索引</b>明确说“把这个链接保存为资源”，NextPlan 会保存安全指针，不复制敏感文件内容。', '<b>No resources indexed yet</b>Ask ChatGPT to save a link as a resource. NextPlan stores a safe pointer without copying sensitive file contents.')
 s = s.replace('<b>现在没有必须推进的主动事项</b>Waiting / blocked 项目已经自动排除。', '<b>No active work needs to move right now</b>Waiting and blocked projects are intentionally excluded.')
 
+# The recommendation score is an internal ranking signal, not user-facing progress.
+# Never show the raw numeric score in the Do this now card.
+s = s.replace('<div class="pc-pct">${Math.round(t.score)}</div>', '')
+
 # Search/index display should use English system taxonomy while preserving user titles/descriptions.
 s = s.replace("area:p.category,project:p.name", "area:categoryLabel(p.category),project:p.name")
 s = s.replace("area:d.category||'',project:projectById(d.project_id)?.name||''", "area:categoryLabel(d.category)||'',project:projectById(d.project_id)?.name||''")
@@ -90,5 +94,8 @@ remaining = [x for x in forbidden if x in s]
 if remaining:
     raise SystemExit('English UI contract failed; untranslated system strings remain: ' + ' | '.join(remaining))
 
+if '<div class="pc-pct">${Math.round(t.score)}</div>' in s:
+    raise SystemExit('UI contract failed; internal recommendation score is still visible')
+
 p.write_text(s, encoding='utf-8')
-print('English UI contract enforced. User-originated state content remains untouched.')
+print('English UI contract enforced. User-originated state content remains untouched; internal recommendation score stays hidden.')
