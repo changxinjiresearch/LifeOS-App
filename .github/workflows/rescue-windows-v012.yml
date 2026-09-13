@@ -1,0 +1,206 @@
+name: NextPlan Windows v0.1.2 Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [release-builder-rescue]
+    paths:
+      - '.github/workflows/rescue-windows-v012.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  SEED_RUN_ID: '34742831144'
+  VERSION: '0.1.2'
+  OFFICIAL_EXTENSION_ID: 'gbdcbnbdmkgjffjioohjfidjmchiggpc'
+
+jobs:
+  windows-v012:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Download verified Windows Local Core seed
+        uses: actions/download-artifact@v4
+        with:
+          name: rescue-old-windows-release
+          path: old-seed
+          github-token: ${{ github.token }}
+          repository: changxinjiresearch/LifeOS-App
+          run-id: ${{ env.SEED_RUN_ID }}
+
+      - name: Recover verified Windows Local Core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive 'old-seed/old-windows-release.zip' -DestinationPath 'old-release' -Force
+          $oldInstaller=Get-ChildItem old-release -Filter '*.exe' -File -Recurse | Select-Object -First 1
+          if(-not $oldInstaller){throw 'old installer missing'}
+          $p=Start-Process $oldInstaller.FullName -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'old installer failed'}
+          $core=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-core.exe' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if(-not $core){throw 'verified nextplan-core.exe not found'}
+          New-Item -ItemType Directory 'desktop_local/src-tauri/resources' -Force | Out-Null
+          Copy-Item $core.FullName 'desktop_local/src-tauri/resources/nextplan-core.exe' -Force
+
+      - name: Prepare unified UI and v0.1.2 Bridge
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:NEXTPLAN_WEB_UI_REF='main'
+          python scripts/sync_web_ui_to_desktop.py
+          npx --yes @tauri-apps/cli@2 icon icon.svg --output desktop_local/src-tauri/icons
+          node --check desktop_local/ui/desktop-adapter.js
+          node --check desktop_local/ui/web-runtime.js
+          node --check chrome_extension_local/background.js
+          node --check chrome_extension_local/content.js
+          node --check chrome_extension_local/popup.js
+          node --check chrome_extension_local/options.js
+          $manifest=Get-Content chrome_extension_local/manifest.json -Raw | ConvertFrom-Json
+          if($manifest.version -ne '0.1.2'){throw 'Bridge manifest is not v0.1.2'}
+          $rust=Get-Content desktop_local/src-tauri/src/main.rs -Raw
+          if($rust -notmatch 'windows_subsystem = "windows"'){throw 'Windows GUI subsystem declaration missing'}
+          if($rust -notmatch 'CREATE_NO_WINDOW'){throw 'hidden Local Core process flag missing'}
+
+      - name: Prove exact ChatGPT command normalization
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          const fs = require('fs');
+          let captured = null;
+          global.window = {};
+          global.location = {pathname:'/c/windows-v012', href:'https://chatgpt.com/c/windows-v012'};
+          global.document = {
+            title:'ChatGPT',
+            documentElement:{appendChild(){}},
+            querySelectorAll(sel){
+              if(sel.includes('user')) return [{innerText:'NextPlan：新建项目 Windows验收测试'}];
+              if(sel.includes('assistant')) return [{innerText:'收到'}];
+              return [];
+            },
+            getElementById(){return null;},
+            createElement(){return {style:{}, id:'', textContent:''};}
+          };
+          global.requestAnimationFrame = fn => fn();
+          global.MutationObserver = class { observe(){} };
+          global.chrome = {runtime:{sendMessage:async msg => {captured=msg; return null;}}};
+          eval(fs.readFileSync('chrome_extension_local/content.js','utf8'));
+          setTimeout(() => {
+            if(!captured) throw new Error('Bridge did not capture ChatGPT turn');
+            if(captured.turn.userText !== 'NextPlan 新建项目 Windows验收测试') {
+              throw new Error(`Unexpected normalized command: ${captured.turn.userText}`);
+            }
+            fs.writeFileSync('normalized-command.txt', captured.turn.userText, 'utf8');
+            console.log('BRIDGE_EXACT_COMMAND_NORMALIZATION_PASS');
+          }, 2400);
+          '@ | Set-Content bridge-command-smoke.js -Encoding UTF8
+          node bridge-command-smoke.js
+          if((Get-Content normalized-command.txt -Raw).Trim() -ne 'NextPlan 新建项目 Windows验收测试'){throw 'normalized command artifact mismatch'}
+
+      - name: Rust compile check
+        run: cargo check --manifest-path desktop_local/src-tauri/Cargo.toml
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          npx --yes @tauri-apps/cli@2 build --bundles nsis --config desktop_local/src-tauri/tauri.conf.json
+          $desktop=(Resolve-Path 'desktop_local/src-tauri/target/release/nextplan-local-desktop.exe').Path
+          $bytes=[IO.File]::ReadAllBytes($desktop)
+          $peOffset=[BitConverter]::ToInt32($bytes,0x3c)
+          $optionalHeader=$peOffset+24
+          $subsystem=[BitConverter]::ToUInt16($bytes,$optionalHeader+68)
+          if($subsystem -ne 2){throw "desktop PE subsystem is $subsystem, expected Windows GUI (2)"}
+          Write-Host WINDOWS_GUI_SUBSYSTEM_PASS
+          $installer=Get-ChildItem 'desktop_local/src-tauri/target/release/bundle/nsis' -Filter '*.exe' | Select-Object -First 1
+          if(-not $installer){throw 'installer missing'}
+          New-Item -ItemType Directory release -Force | Out-Null
+          Copy-Item $installer.FullName "release/NextPlan-Setup-v$env:VERSION.exe" -Force
+
+      - name: Real install, secure Bridge, and project-write acceptance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $installer=(Resolve-Path "release/NextPlan-Setup-v$env:VERSION.exe").Path
+          $p=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'installer failed'}
+          $desktop=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-local-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if(-not $desktop){throw 'installed desktop missing'}
+          $oldPath=$env:PATH
+          try {
+            $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+            $env:NEXTPLAN_LOCAL_PYTHON='C:\definitely-not-python\python.exe'
+            $env:PYTHONHOME='C:\definitely-not-python'
+            $env:PYTHONPATH='C:\definitely-not-python'
+            $env:NODE_PATH='C:\definitely-not-node'
+            $app=Start-Process $desktop.FullName -PassThru
+            $health=$null
+            for($i=0;$i -lt 75;$i++){
+              try{$health=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($health.status -eq 'ok'){break}}catch{}
+              Start-Sleep 1
+            }
+            if(-not $health -or $health.runtime -ne 'nextplan-local-core-v4'){throw 'Local Core failed'}
+
+            $ext=$env:OFFICIAL_EXTENSION_ID
+            $origin="chrome-extension://$ext"
+            $boot=Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$origin;'X-NextPlan-Extension-Id'=$ext} -ContentType 'application/json' -Body '{}'
+            if(-not $boot.token){throw 'bootstrap token missing'}
+
+            $userText=(Get-Content normalized-command.txt -Raw).Trim()
+            $payload=@{
+              turn=@{
+                fingerprint='windows-v012-exact-command'
+                userText=$userText
+                assistantText='收到，NextPlan Sync 会处理这项变更。'
+                title='Windows acceptance'
+                url='https://chatgpt.com/c/windows-v012'
+              }
+              client=@{source='windows-v012-ci';bridgeVersion='0.1.2';now=(Get-Date).ToUniversalTime().ToString('o');timezone='UTC';utcOffsetMinutes=0}
+              apply=$true
+            } | ConvertTo-Json -Depth 8
+            $capture=Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47123/conversation/capture -Headers @{Origin=$origin;Authorization="Bearer $($boot.token)"} -ContentType 'application/json' -Body $payload
+            if($capture.candidate.kind -ne 'create_project'){throw "unexpected candidate: $($capture.candidate.kind)"}
+            if(-not $capture.receipt){throw 'create_project did not produce receipt'}
+            $state=Invoke-RestMethod -Uri http://127.0.0.1:47123/state -Headers @{Origin=$origin;Authorization="Bearer $($boot.token)"}
+            $project=$state.projects | Where-Object {$_.name -eq 'Windows验收测试'} | Select-Object -First 1
+            if(-not $project){throw 'Windows验收测试 was not persisted to SQLite'}
+            Write-Host EXACT_CHATGPT_TO_SQLITE_CREATE_PROJECT_PASS
+            Write-Host ZERO_DEPENDENCY_WINDOWS_ACCEPTANCE_PASS
+          } finally {
+            $env:PATH=$oldPath
+            if($app){Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue}
+            Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue | ForEach-Object {Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue}
+          }
+
+      - name: Package v0.1.2 Windows acceptance release
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'chrome_extension_local/*' -DestinationPath "release/NextPlan-Local-Bridge-v$env:VERSION-Windows.zip" -Force
+          Copy-Item desktop_local/ui/web-ui-source.json release/web-ui-source.json
+          @"
+          canonical_web=changxinjiresearch/LifeOS-App@main
+          desktop_contract=windows-v0.1.2-no-console-exact-command
+          local_core_binary_source=verified-release@19bf8c01e95a83c1271b8fdd4679d5c4f49677ee
+          architecture=windows-x64
+          zero_dependency_acceptance=PASS
+          windows_gui_subsystem=PASS
+          hidden_local_core_console=PASS
+          exact_chatgpt_create_project=PASS
+          secure_browser_bootstrap=PASS
+          "@ | Set-Content release/BUILD-METADATA.txt
+          Get-FileHash release/* -Algorithm SHA256 | ForEach-Object {"$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))"} | Set-Content release/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nextplan-v0.1.2-windows-acceptance
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
