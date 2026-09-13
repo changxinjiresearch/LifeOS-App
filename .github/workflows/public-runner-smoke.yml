@@ -1,0 +1,12 @@
+name: Public runner smoke
+
+on:
+  push:
+    branches: [release-builder-rescue]
+  workflow_dispatch:
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo PUBLIC_RUNNER_OK
