@@ -39,5 +39,12 @@ s = s.replace('deadlines:[],calendar_events:[],calendar_events:[]', 'deadlines:[
 marker = '<!-- NEXTPLAN_PHASE_B_V1 -->'
 if marker not in s:
     s = s.replace('<head>', '<head>\n' + marker, 1)
+
+# Web-only Apple visual layer. Keep this explicit stylesheet link in the canonical page
+# so first-load users receive the redesign without waiting for a service-worker refresh.
+apple_style = '<link rel="stylesheet" href="./apple-web-v1.css?v=apple-web-v1">'
+if apple_style not in s:
+    s = s.replace('<title>NextPlan</title>', apple_style + '\n<title>NextPlan</title>', 1)
+
 p.write_text(s, encoding='utf-8')
-print('Phase B UI contract verified; duplicate helpers removed; blocked-state presentation normalized.')
+print('Phase B UI contract verified; duplicate helpers removed; blocked-state presentation normalized; Apple web theme linked.')
