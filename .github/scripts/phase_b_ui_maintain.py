@@ -167,5 +167,15 @@ html[data-theme="dark"] .mini-cal-head .round-btn+.round-btn{
 '''
     s = s.replace('</style>', calendar_nav_css + '\n</style>', 1)
 
+# The initials avatar in the Web right rail is decorative and redundant.
+# Remove it from layout so date/calendar/upcoming content rises naturally.
+right_rail_avatar_marker = '/* NEXTPLAN RIGHT RAIL AVATAR REMOVAL v1 */'
+if right_rail_avatar_marker not in s:
+    right_rail_avatar_css = '''
+/* NEXTPLAN RIGHT RAIL AVATAR REMOVAL v1 */
+.rightbar .profile-row{display:none!important;margin:0!important;padding:0!important}
+'''
+    s = s.replace('</style>', right_rail_avatar_css + '\n</style>', 1)
+
 p.write_text(s, encoding='utf-8')
-print('Phase B UI contract verified; Apple theme retained; layout fixes retained; icons normalized; mini calendar navigation refined.')
+print('Phase B UI contract verified; Apple theme retained; layout fixes retained; icons normalized; mini calendar navigation refined; redundant right-rail avatar removed.')
