@@ -1,0 +1,24 @@
+name: Trigger Desktop Rescue v3
+
+on:
+  push:
+    branches: [release-builder-rescue]
+    paths:
+      - '.github/workflows/trigger-rescue-v3.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch latest fixed rescue build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST \
+            repos/changxinjiresearch/LifeOS-App/actions/workflows/rescue-desktop-release-v2.yml/dispatches \
+            -f ref=release-builder-rescue
+          echo RESCUE_V3_DISPATCHED
