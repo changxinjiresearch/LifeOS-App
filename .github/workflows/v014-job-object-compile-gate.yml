@@ -5,6 +5,8 @@ on:
     branches: [final-windows-v013-comprehensive]
     paths:
       - '.github/workflows/v014-job-object-compile-gate.yml'
+      - 'desktop_local/src-tauri/src/main.rs'
+      - 'desktop_local/src-tauri/Cargo.toml'
 
 permissions:
   contents: read
