@@ -1,0 +1,43 @@
+name: Repair canonical UI no avatar
+
+on:
+  push:
+    branches: [final-windows-v013-comprehensive]
+    paths: ['.github/workflows/repair-canonical-no-avatar.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Remove legacy CJ avatar from canonical UI
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old='<aside class="rightbar"><div class="profile-row"><button class="avatar" id="profileBtn">CJ</button></div><div class="today-date" id="sideDate">—</div>'
+          new='<aside class="rightbar"><div class="today-date" id="sideDate">—</div>'
+          if old not in s:
+              raise SystemExit('Exact legacy CJ avatar contract not found; refusing broad edit')
+          if s.count(old) != 1:
+              raise SystemExit(f'Expected exactly one CJ avatar contract, found {s.count(old)}')
+          s=s.replace(old,new,1)
+          if 'id="profileBtn">CJ</button>' in s:
+              raise SystemExit('CJ avatar still present after exact replacement')
+          p.write_text(s,encoding='utf-8',newline='\n')
+          print('CANONICAL_NO_AVATAR_PATCH_PASS')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git diff --cached --check
+          git commit -m 'Remove legacy CJ avatar from canonical UI'
+          git push origin HEAD:main
