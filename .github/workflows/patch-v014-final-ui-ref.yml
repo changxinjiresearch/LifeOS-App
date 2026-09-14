@@ -1,0 +1,36 @@
+name: Patch v0.1.4 final UI ref
+
+on:
+  push:
+    branches: [final-windows-v013-comprehensive]
+    paths:
+      - '.github/workflows/patch-v014-final-ui-ref.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: final-windows-v013-comprehensive
+      - name: Lock final workflow to repaired canonical UI
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/rescue-windows-v014-final.yml')
+          text = p.read_text()
+          old = "UI_REF: '140df66e9582ab98894fd8d9a368d8ca4630f6c8'"
+          new = "UI_REF: '37f2dfe30ef376e106f809869eb43da415fab523'"
+          if old not in text:
+              raise SystemExit('expected old UI_REF not found')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/rescue-windows-v014-final.yml
+          git commit -m 'Retarget v0.1.4 final to repaired canonical UI'
+          git push origin HEAD:final-windows-v013-comprehensive
