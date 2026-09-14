@@ -1,0 +1,118 @@
+name: NextPlan v0.1.4 Corruption Recovery Diagnostic
+
+on:
+  push:
+    branches: [final-windows-v013-comprehensive]
+    paths:
+      - '.github/workflows/v014-corruption-recovery-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  SEED_RUN_ID: '34742831144'
+  VERSION: '0.1.4'
+  OFFICIAL_EXTENSION_ID: 'gbdcbnbdmkgjffjioohjfidjmchiggpc'
+
+jobs:
+  recovery:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Download verified Local Core seed
+        uses: actions/download-artifact@v4
+        with:
+          name: rescue-old-windows-release
+          path: old-seed
+          github-token: ${{ github.token }}
+          repository: changxinjiresearch/LifeOS-App
+          run-id: ${{ env.SEED_RUN_ID }}
+      - name: Prepare and build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive old-seed/old-windows-release.zip old-release -Force
+          $seed=Get-ChildItem old-release -Filter '*.exe' -File -Recurse|Select-Object -First 1
+          if(-not $seed){throw 'seed installer missing'}
+          $p=Start-Process $seed.FullName -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'seed install failed'}
+          $core=Get-ChildItem $env:LOCALAPPDATA -Filter nextplan-core.exe -File -Recurse -ErrorAction SilentlyContinue|Select-Object -First 1
+          if(-not $core){throw 'verified core missing'}
+          New-Item -ItemType Directory desktop_local/src-tauri/resources -Force|Out-Null
+          Copy-Item $core.FullName desktop_local/src-tauri/resources/nextplan-core.exe -Force
+          npx --yes @tauri-apps/cli@2 icon icon.svg --output desktop_local/src-tauri/icons
+          npx --yes @tauri-apps/cli@2 build --bundles nsis --config desktop_local/src-tauri/tauri.conf.json
+          if($LASTEXITCODE -ne 0){throw 'build failed'}
+          $installer=Get-ChildItem desktop_local/src-tauri/target/release/bundle/nsis -Filter '*.exe'|Select-Object -First 1
+          if(-not $installer){throw 'installer missing'}
+          New-Item -ItemType Directory diag -Force|Out-Null
+          Copy-Item $installer.FullName diag/NextPlan-Setup-v0.1.4.exe
+      - name: Clean-shutdown corruption recovery diagnostic
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Desktop {$d=Get-ChildItem $env:LOCALAPPDATA -Filter nextplan-local-desktop.exe -File -Recurse -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending|Select-Object -First 1;if(-not $d){throw 'desktop missing'};return $d}
+          function StartClean($x){$old=$env:PATH;try{$env:PATH="$env:SystemRoot\System32;$env:SystemRoot";$env:NEXTPLAN_LOCAL_PYTHON='C:\none\python.exe';return Start-Process $x -PassThru}finally{$env:PATH=$old;Remove-Item Env:NEXTPLAN_LOCAL_PYTHON -ErrorAction SilentlyContinue}}
+          function Health($seconds=90){for($i=0;$i -lt $seconds;$i++){try{$h=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 1;if($h.status -eq 'ok'){return $h}}catch{};Start-Sleep 1};return $null}
+          function Boot {$o="chrome-extension://$env:OFFICIAL_EXTENSION_ID";Invoke-RestMethod -Method Post http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$o;'X-NextPlan-Extension-Id'=$env:OFFICIAL_EXTENSION_ID} -ContentType application/json -Body '{}'}
+          function State($t){$o="chrome-extension://$env:OFFICIAL_EXTENSION_ID";Invoke-RestMethod http://127.0.0.1:47123/state -Headers @{Origin=$o;Authorization="Bearer $t"}}
+          function GracefulStop {
+            $p=Get-Process nextplan-local-desktop -ErrorAction SilentlyContinue|Select-Object -First 1
+            if(-not $p){throw 'desktop process missing for graceful stop'}
+            if(-not $p.CloseMainWindow()){throw 'CloseMainWindow failed'}
+            if(-not $p.WaitForExit(15000)){throw 'desktop did not exit'}
+            for($i=0;$i -lt 30;$i++){if(-not(Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue)){break};Start-Sleep -Milliseconds 500}
+            if(Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue){throw 'ports remain after graceful stop'}
+            if(Get-Process nextplan-core -ErrorAction SilentlyContinue){throw 'core orphan after graceful stop'}
+          }
+          $installer=(Resolve-Path diag/NextPlan-Setup-v0.1.4.exe).Path
+          $p=Start-Process $installer -ArgumentList '/S' -Wait -PassThru;if($p.ExitCode -ne 0){throw 'install failed'}
+          $d=Desktop;$app=StartClean $d.FullName;$h=Health 90;if(-not $h){throw 'initial health failed'}
+          $b=Boot;$o="chrome-extension://$env:OFFICIAL_EXTENSION_ID"
+          $body=@{action=@{action='create_project';name='RECOVERY DIAGNOSTIC SENTINEL';category='其他';priority=1;next_action='survive corruption'}}|ConvertTo-Json -Depth 8
+          Invoke-RestMethod -Method Post http://127.0.0.1:47123/actions/execute -Headers @{Origin=$o;Authorization="Bearer $($b.token)"} -ContentType application/json -Body $body|Out-Null
+          $maint=Invoke-RestMethod http://127.0.0.1:47123/maintenance/status -Headers @{Origin=$o;Authorization="Bearer $($b.token)"}
+          $dataDir=[IO.Path]::GetFullPath($maint.data_dir);Set-Content diag/data-dir.txt $dataDir
+          $db=Join-Path $dataDir nextplan.db
+          $recovery=Join-Path $dataDir recovery
+          $count=@(Get-ChildItem $recovery -Filter 'recovery-*.db' -File -ErrorAction SilentlyContinue).Count
+          Write-Host "RECOVERY_CHECKPOINT_COUNT_BEFORE=$count"
+          if($count -lt 1){throw 'no recovery checkpoint created'}
+          GracefulStop
+          Remove-Item "$db-wal","$db-shm" -Force -ErrorAction SilentlyContinue
+          [IO.File]::WriteAllBytes($db,[Text.Encoding]::UTF8.GetBytes('corrupt-v014-diagnostic'))
+          Write-Host 'DATABASE_CORRUPTED_AFTER_CLEAN_SHUTDOWN'
+          $d=Desktop;$app=StartClean $d.FullName;$h=Health 90
+          if(-not $h){
+            Write-Host '--- PROCESS DIAGNOSTIC ---'
+            Get-Process nextplan-local-desktop,nextplan-core -ErrorAction SilentlyContinue|Format-List Id,ProcessName,Path,StartTime|Out-String|Write-Host
+            Write-Host '--- PORT DIAGNOSTIC ---'
+            Get-NetTCPConnection -LocalPort 47123,47124 -ErrorAction SilentlyContinue|Format-Table -AutoSize|Out-String|Write-Host
+            Write-Host '--- DATA DIR ---'
+            Get-ChildItem $dataDir -Force -Recurse -ErrorAction SilentlyContinue|Select-Object FullName,Length,LastWriteTime|Format-Table -AutoSize|Out-String|Write-Host
+            Write-Host '--- LOCAL CORE LOG ---'
+            $log=Join-Path $dataDir 'logs/local-core.log'
+            if(Test-Path $log){Get-Content $log -Tail 250|Write-Host}else{Write-Host 'local-core.log missing'}
+            throw 'health failed after clean-shutdown corruption'
+          }
+          Write-Host ("RECOVERY_HEALTH="+($h|ConvertTo-Json -Depth 8 -Compress))
+          if(-not $h.integrity.ok){throw 'integrity not ok after recovery'}
+          if(-not $h.integrity.recovered_on_startup){throw 'recovered_on_startup not true'}
+          $b=Boot;$s=State $b.token
+          if(-not($s.projects|Where-Object{$_.name -eq 'RECOVERY DIAGNOSTIC SENTINEL'})){throw 'sentinel not restored'}
+          Write-Host V014_CLEAN_SHUTDOWN_CORRUPTION_RECOVERY_PASS
+          GracefulStop
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v014-corruption-recovery-diagnostic
+          path: diag/*
+          if-no-files-found: warn
