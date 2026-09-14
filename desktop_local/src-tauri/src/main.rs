@@ -11,7 +11,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use tauri::{Manager, RunEvent, State};
+use tauri::{Manager, RunEvent, State, WindowEvent};
 use uuid::Uuid;
 
 const EXPECTED_EXTENSION_ID: &str = "gbdcbnbdmkgjffjioohjfidjmchiggpc";
@@ -163,6 +163,15 @@ fn start_browser_bootstrap_bridge(core_port: u16, bridge_port: u16, token: Strin
     });
 }
 
+fn shutdown_core(runtime: &CoreRuntime) {
+    if let Ok(mut slot) = runtime.child.lock() {
+        if let Some(mut child) = slot.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 fn main() {
     let port = 47123u16;
     let bridge_port = 47124u16;
@@ -251,16 +260,20 @@ fn main() {
         .expect("failed to build NextPlan desktop app");
 
     app.run(|handle, event| {
-        if matches!(event, RunEvent::Exit) {
-            let state = handle.state::<CoreRuntime>();
-            let lock_result = state.child.lock();
-            if let Ok(mut slot) = lock_result {
-                if let Some(child) = slot.as_mut() {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                }
-                *slot = None;
+        match event {
+            RunEvent::WindowEvent {
+                event: WindowEvent::CloseRequested { .. },
+                ..
+            } => {
+                let state = handle.state::<CoreRuntime>();
+                shutdown_core(&state);
+                handle.exit(0);
             }
+            RunEvent::ExitRequested { .. } | RunEvent::Exit => {
+                let state = handle.state::<CoreRuntime>();
+                shutdown_core(&state);
+            }
+            _ => {}
         }
     });
 }
