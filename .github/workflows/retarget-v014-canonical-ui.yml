@@ -1,0 +1,52 @@
+name: Retarget v0.1.4 to repaired canonical UI
+
+on:
+  push:
+    branches: [final-windows-v013-comprehensive]
+    paths: ['.github/workflows/retarget-v014-canonical-ui.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  retarget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: final-windows-v013-comprehensive
+          fetch-depth: 0
+      - name: Pin repaired canonical UI and harden restart parity test
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/rescue-windows-v014-final.yml')
+          s=p.read_text(encoding='utf-8')
+          old="UI_REF: '140df66e9582ab98894fd8d9a368d8ca4630f6c8'"
+          new="UI_REF: '2a9c4a6e408320f52321163e132773763bf10793'"
+          if old not in s:
+              raise SystemExit('old UI_REF not found')
+          s=s.replace(old,new,1)
+          old2="""          $desktop=Find-Desktop;$app=Start-Clean $desktop.FullName;$h=Wait-Health;$b=Verify-Sentinel
+          $env:NEXTPLAN_TEST_TOKEN=$b.token
+          node scripts/v014_adapter_acceptance.js
+"""
+          new2="""          $desktop=Find-Desktop;$app=Start-Clean $desktop.FullName;$h=Wait-Health;$b=Verify-Sentinel
+          $env:NEXTPLAN_TEST_TOKEN=$b.token
+          $live=State $b.token
+          $live | ConvertTo-Json -Depth 100 | Set-Content v014-raw-state.json -Encoding UTF8
+          node scripts/v014_adapter_acceptance.js
+"""
+          if old2 not in s:
+              raise SystemExit('restart parity block not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s,encoding='utf-8',newline='\n')
+          print('V014_RETARGET_PATCH_PASS')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/rescue-windows-v014-final.yml
+          git diff --cached --check
+          git commit -m 'Pin v0.1.4 to repaired canonical UI'
+          git push origin HEAD:final-windows-v013-comprehensive
