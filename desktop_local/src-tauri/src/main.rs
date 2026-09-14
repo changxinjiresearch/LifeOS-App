@@ -5,6 +5,8 @@ use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 #[cfg(target_os = "windows")]
+use std::os::windows::io::AsRawHandle;
+#[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -13,6 +15,14 @@ use std::thread;
 use std::time::Duration;
 use tauri::{Manager, RunEvent, State, WindowEvent};
 use uuid::Uuid;
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+    SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+};
 
 const EXPECTED_EXTENSION_ID: &str = "gbdcbnbdmkgjffjioohjfidjmchiggpc";
 
@@ -21,6 +31,8 @@ struct CoreRuntime {
     token: String,
     mode: Mutex<String>,
     child: Mutex<Option<Child>>,
+    #[cfg(target_os = "windows")]
+    job: Mutex<Option<isize>>,
     start_error: Mutex<Option<String>>,
 }
 
@@ -163,7 +175,55 @@ fn start_browser_bootstrap_bridge(core_port: u16, bridge_port: u16, token: Strin
     });
 }
 
+#[cfg(target_os = "windows")]
+fn create_core_job(child: &Child) -> Result<isize, String> {
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            return Err(format!("CreateJobObjectW failed: {}", std::io::Error::last_os_error()));
+        }
+
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &info as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION as *const std::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        ) == 0
+        {
+            let err = std::io::Error::last_os_error();
+            CloseHandle(job);
+            return Err(format!("SetInformationJobObject failed: {err}"));
+        }
+
+        let process = child.as_raw_handle() as HANDLE;
+        if AssignProcessToJobObject(job, process) == 0 {
+            let err = std::io::Error::last_os_error();
+            CloseHandle(job);
+            return Err(format!("AssignProcessToJobObject failed: {err}"));
+        }
+        Ok(job as isize)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn terminate_core_job(raw_job: isize) {
+    unsafe {
+        let job = raw_job as HANDLE;
+        let _ = TerminateJobObject(job, 0);
+        let _ = CloseHandle(job);
+    }
+}
+
 fn shutdown_core(runtime: &CoreRuntime) {
+    #[cfg(target_os = "windows")]
+    if let Ok(mut slot) = runtime.job.lock() {
+        if let Some(job) = slot.take() {
+            terminate_core_job(job);
+        }
+    }
+
     if let Ok(mut slot) = runtime.child.lock() {
         if let Some(mut child) = slot.take() {
             let _ = child.kill();
@@ -182,6 +242,8 @@ fn main() {
         token: bootstrap_token,
         mode: Mutex::new("not-started".into()),
         child: Mutex::new(None),
+        #[cfg(target_os = "windows")]
+        job: Mutex::new(None),
         start_error: Mutex::new(None),
     };
 
@@ -242,7 +304,33 @@ fn main() {
             }
 
             match command.spawn() {
-                Ok(child) => {
+                Ok(mut child) => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        match create_core_job(&child) {
+                            Ok(job) => {
+                                if let Ok(mut slot) = state.job.lock() {
+                                    *slot = Some(job);
+                                } else {
+                                    terminate_core_job(job);
+                                    let _ = child.wait();
+                                    if let Ok(mut error) = state.start_error.lock() {
+                                        *error = Some("failed to retain Local Core Windows Job Object".into());
+                                    }
+                                    return Ok(());
+                                }
+                            }
+                            Err(err) => {
+                                let _ = child.kill();
+                                let _ = child.wait();
+                                if let Ok(mut error) = state.start_error.lock() {
+                                    *error = Some(err);
+                                }
+                                return Ok(());
+                            }
+                        }
+                    }
+
                     if let Ok(mut slot) = state.child.lock() {
                         *slot = Some(child);
                     }
