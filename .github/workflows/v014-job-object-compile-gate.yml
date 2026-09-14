@@ -14,6 +14,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
       - name: Validate lifecycle source contract
         shell: pwsh
@@ -22,6 +25,8 @@ jobs:
           foreach($needle in @('CreateJobObjectW','AssignProcessToJobObject','JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE','TerminateJobObject','WindowEvent::CloseRequested')){if($rust -notlike "*$needle*"){throw "missing: $needle"}}
           New-Item -ItemType Directory desktop_local/src-tauri/resources -Force|Out-Null
           Set-Content desktop_local/src-tauri/resources/compile-gate-placeholder.txt 'compile gate only'
+          npx --yes @tauri-apps/cli@2 icon icon.svg --output desktop_local/src-tauri/icons
+          if($LASTEXITCODE -ne 0){throw 'icon generation failed'}
           cargo check --manifest-path desktop_local/src-tauri/Cargo.toml
           if($LASTEXITCODE -ne 0){throw 'cargo check failed'}
           Write-Host V014_JOB_OBJECT_COMPILE_PASS
