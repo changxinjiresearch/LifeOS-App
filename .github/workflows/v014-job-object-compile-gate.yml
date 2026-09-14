@@ -1,0 +1,25 @@
+name: NextPlan v0.1.4 Job Object Compile Gate
+
+on:
+  push:
+    branches: [final-windows-v013-comprehensive]
+    paths:
+      - '.github/workflows/v014-job-object-compile-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Validate lifecycle source contract
+        shell: pwsh
+        run: |
+          $rust=Get-Content desktop_local/src-tauri/src/main.rs -Raw
+          foreach($needle in @('CreateJobObjectW','AssignProcessToJobObject','JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE','TerminateJobObject','WindowEvent::CloseRequested')){if($rust -notlike "*$needle*"){throw "missing: $needle"}}
+          cargo check --manifest-path desktop_local/src-tauri/Cargo.toml
+          if($LASTEXITCODE -ne 0){throw 'cargo check failed'}
+          Write-Host V014_JOB_OBJECT_COMPILE_PASS
