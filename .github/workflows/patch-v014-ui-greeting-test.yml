@@ -1,0 +1,39 @@
+name: Patch v014 UI greeting acceptance
+
+on:
+  push:
+    branches:
+      - final-windows-v013-comprehensive
+    paths:
+      - .github/workflows/patch-v014-ui-greeting-test.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: final-windows-v013-comprehensive
+          fetch-depth: 0
+      - name: Make greeting assertion inspect generated runtime
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/v014_ui_acceptance.js')
+          s=p.read_text(encoding='utf-8')
+          old="assert(html.includes('Good morning.')&&html.includes('Good afternoon.')&&html.includes('Good evening.'),'ui.greeting_contract');"
+          new="assert(runtime.includes('Good morning.')&&runtime.includes('Good afternoon.')&&runtime.includes('Good evening.'),'ui.greeting_contract');"
+          if old not in s:
+              raise SystemExit('greeting assertion not found')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8',newline='\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/v014_ui_acceptance.js
+          git diff --cached --check
+          git commit -m 'Inspect generated runtime for greeting contract'
+          git push origin HEAD:final-windows-v013-comprehensive
