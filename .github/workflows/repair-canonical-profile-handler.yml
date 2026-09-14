@@ -1,0 +1,46 @@
+name: Repair canonical profile handler
+
+on:
+  push:
+    branches:
+      - final-windows-v013-comprehensive
+    paths:
+      - .github/workflows/repair-canonical-profile-handler.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Remove dead profile button binding
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old="$('settingsNav').onclick=openSettings;$('profileBtn').onclick=openSettings;$('cancelSettings').onclick=()=>$('settingsDialog').close();"
+          new="$('settingsNav').onclick=openSettings;$('cancelSettings').onclick=()=>$('settingsDialog').close();"
+          if old not in s:
+              raise SystemExit('Exact dead profile handler not found')
+          if s.count(old) != 1:
+              raise SystemExit(f'Expected one handler sequence, found {s.count(old)}')
+          s=s.replace(old,new,1)
+          if "$('profileBtn').onclick" in s:
+              raise SystemExit('profile handler remains')
+          if 'id="profileBtn">CJ</button>' in s:
+              raise SystemExit('CJ avatar unexpectedly remains')
+          p.write_text(s,encoding='utf-8',newline='\n')
+          print('CANONICAL_PROFILE_HANDLER_REPAIR_PASS')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git diff --cached --check
+          git commit -m 'Remove dead profile handler from canonical UI'
+          git push origin HEAD:main
