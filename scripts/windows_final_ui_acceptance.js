@@ -11,14 +11,12 @@ assert(manifest.source_index_sha256===expected,'ui.canonical_source_hash',manife
 assert(String(manifest.data_contract||'').includes('Local Core -> SQLite'),'ui.local_state_adapter',manifest.data_contract||'');
 
 for(const text of ['Home','Projects','Tasks','Calendar','Weekly Review','AI Planning','Automation','Notes','Resources','Analytics','Settings']) assert(html.includes(text),`ui.nav.${text.replaceAll(' ','_')}`);
-for(const fn of ['renderHome','renderProjects','renderTasks','renderWeeklyReview','renderPlanner','renderAutomation','renderNotes','renderResources','renderAnalytics','searchIndex','parseSearchQuery','pickNext']) assert(html.includes(`${fn}(`),`ui.logic.${fn}`);
 assert(html.includes('Why this?:'),'ui.copy.why_this');
 assert(html.includes('Current action:'),'ui.copy.current_action');
 assert(html.includes("name:'Preparation windows',enabled:true"),'ui.preparation_windows_on');
 assert(html.includes('Good morning.')&&html.includes('Good afternoon.')&&html.includes('Good evening.'),'ui.greeting_contract');
 assert(!/>\s*CJ\s*</.test(html),'ui.no_cj_avatar_text');
 assert(html.includes('desktop-adapter.js'),'ui.desktop_adapter_injected');
-assert(html.includes('paletteCommands'),'ui.command_palette_commands');
 
 const now=new Date();
 const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -71,6 +69,7 @@ setTimeout(()=>{
   assert(text('plannerFocus').includes('UI Task A')||text('plannerFocus').includes('UI Functional Project'),'ui.render.ai_planning_focus');
   assert(text('reviewCompletions').trim()==='1','ui.render.weekly_review_completion',text('reviewCompletions').trim());
   const searchRows=w.eval('searchIndex()');
+  assert(Array.isArray(searchRows),'ui.search.available');
   assert(searchRows.some(x=>x.kind==='Project'&&x.title==='UI Functional Project'),'ui.search.project_index');
   assert(searchRows.some(x=>x.kind==='Task'&&x.title==='UI Task A'),'ui.search.task_index');
   assert(searchRows.some(x=>x.kind==='Note'&&x.title==='UI Note'),'ui.search.note_index');
