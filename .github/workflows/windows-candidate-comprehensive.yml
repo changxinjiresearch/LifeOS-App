@@ -1,0 +1,229 @@
+name: NextPlan Windows Candidate Comprehensive Acceptance
+
+on:
+  push:
+    branches: [final-windows-v013-comprehensive]
+    paths:
+      - '.github/workflows/windows-candidate-comprehensive.yml'
+      - 'chrome_extension_local/**'
+      - 'scripts/windows_final_*.js'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  FINAL_RUN_ID: '34770165887'
+  V012_RUN_ID: '34765642458'
+  OFFICIAL_EXTENSION_ID: 'gbdcbnbdmkgjffjioohjfidjmchiggpc'
+  EXPECTED_INSTALLER_SHA: '5547cb8abd7914c9ff9e8230b91763e49e4395776fc577e62dd05e9c32443dbf'
+  EXPECTED_BRIDGE_SHA: 'b2e04bf444d2b8a97a6ec5ee538d0063775fe34594b647098215b4812469534b'
+  EXPECTED_UI_SHA: 'b1765641ad11d545e17e46d07e53dfc5fdd9e0756c79d82d803beeac2bb88d59'
+
+jobs:
+  candidate-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test-only JS dependency
+        shell: pwsh
+        run: npm install --no-save jsdom@24
+
+      - name: Download immutable v0.1.3 installer release
+        uses: actions/download-artifact@v4
+        with:
+          name: nextplan-v0.1.3-windows-final
+          path: release-final
+          github-token: ${{ github.token }}
+          repository: changxinjiresearch/LifeOS-App
+          run-id: ${{ env.FINAL_RUN_ID }}
+
+      - name: Download v0.1.2 upgrade predecessor
+        uses: actions/download-artifact@v4
+        with:
+          name: nextplan-v0.1.2-windows-acceptance
+          path: release-v012
+          github-token: ${{ github.token }}
+          repository: changxinjiresearch/LifeOS-App
+          run-id: ${{ env.V012_RUN_ID }}
+
+      - name: Verify immutable release then stage candidate Bridge
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $installer=(Resolve-Path 'release-final/NextPlan-Setup-v0.1.3.exe').Path
+          $releaseBridge=(Resolve-Path 'release-final/NextPlan-Local-Bridge-v0.1.3-Windows.zip').Path
+          if((Get-FileHash $installer -Algorithm SHA256).Hash.ToLower() -ne $env:EXPECTED_INSTALLER_SHA){throw 'immutable installer SHA mismatch'}
+          if((Get-FileHash $releaseBridge -Algorithm SHA256).Hash.ToLower() -ne $env:EXPECTED_BRIDGE_SHA){throw 'immutable release Bridge SHA mismatch'}
+          Expand-Archive $releaseBridge -DestinationPath bridge-final -Force
+          Copy-Item chrome_extension_local/background.js bridge-final/background.js -Force
+          Copy-Item chrome_extension_local/content.js bridge-final/content.js -Force
+          $m=Get-Content bridge-final/manifest.json -Raw|ConvertFrom-Json
+          if($m.version -ne '0.1.3'){throw 'candidate Bridge package version mismatch'}
+          foreach($f in @('bridge-final/background.js','bridge-final/content.js','scripts/windows_final_comprehensive_acceptance.js','scripts/windows_final_feature_parity_acceptance.js','scripts/windows_final_content_dom_acceptance.js','scripts/windows_final_ui_acceptance.js')){node --check $f;if($LASTEXITCODE -ne 0){throw "syntax check failed: $f"}}
+          Write-Host WINDOWS_CANDIDATE_IDENTITY_PASS
+
+      - name: Shared UI and ChatGPT DOM acceptance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:NEXTPLAN_WEB_UI_REF='main'
+          python scripts/sync_web_ui_to_desktop.py
+          if($LASTEXITCODE -ne 0){throw 'Web-to-Desktop UI sync failed'}
+          $env:BRIDGE_DIR=(Resolve-Path 'bridge-final').Path
+          node scripts/windows_final_ui_acceptance.js
+          if($LASTEXITCODE -ne 0){throw 'shared UI acceptance failed'}
+          node scripts/windows_final_content_dom_acceptance.js
+          if($LASTEXITCODE -ne 0){throw 'ChatGPT DOM Bridge acceptance failed'}
+          Write-Host WINDOWS_CANDIDATE_UI_DOM_PASS
+
+      - name: Upgrade v0.1.2 to v0.1.3 and run installed-product matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Stop-NextPlan {
+            Get-Process 'nextplan-local-desktop' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue | ForEach-Object {Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue}
+            Start-Sleep 2
+          }
+          function Find-Desktop {
+            $d=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-local-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if(-not $d){throw 'installed desktop missing'}
+            return $d
+          }
+          function Start-Clean([string]$exe) {
+            $old=$env:PATH
+            try {
+              $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+              $env:NEXTPLAN_LOCAL_PYTHON='C:\not-python\python.exe'
+              $env:PYTHONHOME='C:\not-python'
+              $env:PYTHONPATH='C:\not-python'
+              $env:NODE_PATH='C:\not-node'
+              return Start-Process $exe -PassThru
+            } finally {
+              $env:PATH=$old
+              Remove-Item Env:NEXTPLAN_LOCAL_PYTHON,Env:PYTHONHOME,Env:PYTHONPATH,Env:NODE_PATH -ErrorAction SilentlyContinue
+            }
+          }
+          function Wait-Health {
+            for($i=0;$i -lt 75;$i++){try{$h=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($h.status -eq 'ok'){return $h}}catch{};Start-Sleep 1}
+            throw 'Local Core health timeout'
+          }
+          function Bootstrap {
+            $o="chrome-extension://$env:OFFICIAL_EXTENSION_ID"
+            Invoke-RestMethod -Method Post http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$o;'X-NextPlan-Extension-Id'=$env:OFFICIAL_EXTENSION_ID} -ContentType application/json -Body '{}'
+          }
+          function Read-State($t) {
+            $o="chrome-extension://$env:OFFICIAL_EXTENSION_ID"
+            Invoke-RestMethod http://127.0.0.1:47123/state -Headers @{Origin=$o;Authorization="Bearer $t"}
+          }
+
+          Stop-NextPlan
+          $old=(Resolve-Path 'release-v012/NextPlan-Setup-v0.1.2.exe').Path
+          $p=Start-Process $old -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'v0.1.2 install failed'}
+          $desktop=Find-Desktop
+          $app=Start-Clean $desktop.FullName
+          $h=Wait-Health
+          $b=Bootstrap
+          $o="chrome-extension://$env:OFFICIAL_EXTENSION_ID"
+          $body=@{action=@{action='create_project';name='UPGRADE SENTINEL';category='其他';priority=1;next_action='survive upgrade'}}|ConvertTo-Json -Depth 8
+          Invoke-RestMethod -Method Post http://127.0.0.1:47123/actions/execute -Headers @{Origin=$o;Authorization="Bearer $($b.token)"} -ContentType application/json -Body $body | Out-Null
+          Stop-NextPlan
+
+          $installer=(Resolve-Path 'release-final/NextPlan-Setup-v0.1.3.exe').Path
+          $p=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'v0.1.3 upgrade failed'}
+          $desktop=Find-Desktop
+          $bytes=[IO.File]::ReadAllBytes($desktop.FullName);$pe=[BitConverter]::ToInt32($bytes,0x3c);$sub=[BitConverter]::ToUInt16($bytes,$pe+24+68)
+          if($sub -ne 2){throw "visible-console PE subsystem: $sub"}
+          $app=Start-Clean $desktop.FullName
+          $h=Wait-Health
+          if($h.runtime -ne 'nextplan-local-core-v4' -or -not $h.integrity.ok){throw 'runtime/integrity failed'}
+          $b=Bootstrap;$s=Read-State $b.token
+          if(-not ($s.projects|Where-Object {$_.name -eq 'UPGRADE SENTINEL'})){throw 'upgrade lost user state'}
+          $maintenance=Invoke-RestMethod http://127.0.0.1:47123/maintenance/status -Headers @{Origin=$o;Authorization="Bearer $($b.token)"}
+          $dataDir=[IO.Path]::GetFullPath($maintenance.data_dir);$installDir=[IO.Path]::GetFullPath($desktop.DirectoryName)
+          if($dataDir.StartsWith($installDir,[StringComparison]::OrdinalIgnoreCase)){throw 'SQLite data lives inside install directory'}
+          Set-Content windows-final-data-dir.txt $dataDir
+
+          $workspace=Join-Path $env:RUNNER_TEMP 'nextplan-final-workspace';New-Item -ItemType Directory $workspace -Force|Out-Null
+          $fixture=Join-Path $workspace 'fixture.txt';Set-Content $fixture 'NextPlan Windows final acceptance fixture'
+          $env:BRIDGE_DIR=(Resolve-Path 'bridge-final').Path
+          $env:NP_WORKSPACE=$workspace;$env:NP_ARTIFACT=$fixture
+          $env:NP_RESULT_FILE=(Join-Path $PWD 'windows-final-results.json');$env:NP_EXPECT_PERSIST_FILE=(Join-Path $PWD 'windows-final-persist.json')
+          node scripts/windows_final_comprehensive_acceptance.js
+          if($LASTEXITCODE -ne 0){throw 'installed-product matrix failed'}
+
+          node scripts/windows_final_feature_parity_acceptance.js
+          if($LASTEXITCODE -ne 0){throw 'roadmap feature parity failed'}
+
+          $b=Bootstrap;$raw=Read-State $b.token;$raw|ConvertTo-Json -Depth 100|Set-Content raw-state.json -Encoding UTF8
+          node scripts/v013_adapter_acceptance.js
+          if($LASTEXITCODE -ne 0){throw 'Desktop adapter acceptance failed'}
+          Write-Host WINDOWS_CANDIDATE_INSTALLED_PRODUCT_PASS
+
+      - name: Full lifecycle acceptance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Stop-Ports {Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue|ForEach-Object{Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue};Start-Sleep 2}
+          function Find-Desktop {$d=Get-ChildItem $env:LOCALAPPDATA -Filter 'nextplan-local-desktop.exe' -File -Recurse -ErrorAction SilentlyContinue|Sort-Object LastWriteTime -Descending|Select-Object -First 1;if(-not $d){throw 'desktop missing'};return $d}
+          function Start-Clean($exe){$old=$env:PATH;try{$env:PATH="$env:SystemRoot\System32;$env:SystemRoot";$env:NEXTPLAN_LOCAL_PYTHON='C:\not-python\python.exe';return Start-Process $exe -PassThru}finally{$env:PATH=$old;Remove-Item Env:NEXTPLAN_LOCAL_PYTHON -ErrorAction SilentlyContinue}}
+          function Wait-Health {for($i=0;$i -lt 75;$i++){try{$h=Invoke-RestMethod http://127.0.0.1:47123/healthz -TimeoutSec 2;if($h.status -eq 'ok'){return $h}}catch{};Start-Sleep 1};throw 'health timeout'}
+          function Bootstrap {$o="chrome-extension://$env:OFFICIAL_EXTENSION_ID";Invoke-RestMethod -Method Post http://127.0.0.1:47124/bridge/bootstrap -Headers @{Origin=$o;'X-NextPlan-Extension-Id'=$env:OFFICIAL_EXTENSION_ID} -ContentType application/json -Body '{}'}
+          function State($t){$o="chrome-extension://$env:OFFICIAL_EXTENSION_ID";Invoke-RestMethod http://127.0.0.1:47123/state -Headers @{Origin=$o;Authorization="Bearer $t"}}
+          function Verify-Sentinel {$b=Bootstrap;$s=State $b.token;$want=Get-Content windows-final-persist.json -Raw|ConvertFrom-Json;if(-not ($s.projects|Where-Object {$_.id -eq $want.id -and $_.name -eq $want.name})){throw 'persistence sentinel missing'};return $b}
+
+          $desktop=Find-Desktop
+          $proc=Get-Process 'nextplan-local-desktop' -ErrorAction SilentlyContinue|Select-Object -First 1
+          if($proc){$null=$proc.CloseMainWindow();if(-not $proc.WaitForExit(10000)){Stop-Process -Id $proc.Id -Force}}
+          for($i=0;$i -lt 20;$i++){if(-not (Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue)){break};Start-Sleep -Milliseconds 500}
+          if(Get-NetTCPConnection -LocalPort 47123,47124 -State Listen -ErrorAction SilentlyContinue){throw 'ports remain after app exit'}
+          Write-Host WINDOWS_CANDIDATE_GRACEFUL_EXIT_PASS
+
+          $desktop=Find-Desktop;$app=Start-Clean $desktop.FullName;$h=Wait-Health;$b=Verify-Sentinel
+          Write-Host WINDOWS_CANDIDATE_RESTART_PASS
+
+          $dataDir=(Get-Content windows-final-data-dir.txt -Raw).Trim();$db=Join-Path $dataDir 'nextplan.db'
+          Get-Process 'nextplan-local-desktop' -ErrorAction SilentlyContinue|Stop-Process -Force -ErrorAction SilentlyContinue;Stop-Ports
+          Remove-Item "$db-wal","$db-shm" -Force -ErrorAction SilentlyContinue
+          [IO.File]::WriteAllBytes($db,[Text.Encoding]::UTF8.GetBytes('corrupt-for-final-recovery-test'))
+          $desktop=Find-Desktop;$app=Start-Clean $desktop.FullName;$h=Wait-Health
+          if(-not $h.integrity.ok -or -not $h.integrity.recovered_on_startup){throw 'corruption recovery failed'}
+          $b=Verify-Sentinel
+          Write-Host WINDOWS_CANDIDATE_RECOVERY_PASS
+
+          Get-Process 'nextplan-local-desktop' -ErrorAction SilentlyContinue|Stop-Process -Force -ErrorAction SilentlyContinue;Stop-Ports
+          $installer=(Resolve-Path 'release-final/NextPlan-Setup-v0.1.3.exe').Path
+          $p=Start-Process $installer -ArgumentList '/S' -Wait -PassThru;if($p.ExitCode -ne 0){throw 'repair install failed'}
+          $desktop=Find-Desktop;$app=Start-Clean $desktop.FullName;$h=Wait-Health;$b=Verify-Sentinel
+          Write-Host WINDOWS_CANDIDATE_REPAIR_PASS
+
+          Get-Process 'nextplan-local-desktop' -ErrorAction SilentlyContinue|Stop-Process -Force -ErrorAction SilentlyContinue;Stop-Ports
+          $un=Get-ChildItem $desktop.DirectoryName -Filter 'uninstall*.exe' -File|Select-Object -First 1;if(-not $un){throw 'uninstaller missing'}
+          $p=Start-Process $un.FullName -ArgumentList '/S' -Wait -PassThru;if($p.ExitCode -ne 0){throw 'uninstall failed'}
+          if(-not (Test-Path $db)){throw 'uninstall deleted user DB'}
+          $p=Start-Process $installer -ArgumentList '/S' -Wait -PassThru;if($p.ExitCode -ne 0){throw 'reinstall failed'}
+          $desktop=Find-Desktop;$app=Start-Clean $desktop.FullName;$h=Wait-Health;$b=Verify-Sentinel
+          Write-Host WINDOWS_CANDIDATE_UNINSTALL_REINSTALL_PASS
+          Get-Process 'nextplan-local-desktop' -ErrorAction SilentlyContinue|Stop-Process -Force -ErrorAction SilentlyContinue;Stop-Ports
+
+      - name: Upload candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextplan-windows-candidate-comprehensive-evidence
+          path: |
+            windows-final-results.json
+            windows-final-persist.json
+            windows-final-data-dir.txt
+            raw-state.json
+            desktop_local/ui/web-ui-source.json
+          if-no-files-found: warn
+          retention-days: 30
