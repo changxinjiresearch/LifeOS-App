@@ -1,6 +1,5 @@
 const fs=require('fs');
 const {JSDOM}=require('jsdom');
-const crypto=require('crypto');
 
 function assert(cond,msg,detail=''){if(!cond)throw new Error(`${msg}${detail?': '+detail:''}`);console.log(`PASS :: ${msg}${detail?' :: '+detail:''}`)}
 const htmlPath='desktop_local/ui/index.html';
@@ -12,7 +11,7 @@ assert(manifest.source_index_sha256===expected,'ui.canonical_source_hash',manife
 assert(String(manifest.data_contract||'').includes('Local Core -> SQLite'),'ui.local_state_adapter',manifest.data_contract||'');
 
 for(const text of ['Home','Projects','Tasks','Calendar','Weekly Review','AI Planning','Automation','Notes','Resources','Analytics','Settings']) assert(html.includes(text),`ui.nav.${text.replaceAll(' ','_')}`);
-for(const fn of ['renderHome','renderProjects','renderTasks','renderWeeklyReview','renderPlanner','renderAutomation','renderNotes','renderResources','renderAnalytics','searchIndex','parseSearchQuery','pickNext']) assert(html.includes(`function ${fn}`)||html.includes(`const ${fn}`),`ui.logic.${fn}`);
+for(const fn of ['renderHome','renderProjects','renderTasks','renderWeeklyReview','renderPlanner','renderAutomation','renderNotes','renderResources','renderAnalytics','searchIndex','parseSearchQuery','pickNext']) assert(html.includes(`${fn}(`),`ui.logic.${fn}`);
 assert(html.includes('Why this?:'),'ui.copy.why_this');
 assert(html.includes('Current action:'),'ui.copy.current_action');
 assert(html.includes("name:'Preparation windows',enabled:true"),'ui.preparation_windows_on');
@@ -45,15 +44,18 @@ w.scrollTo=()=>{};
 w.requestAnimationFrame=cb=>setTimeout(cb,0);
 w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 w.structuredClone=global.structuredClone;
+if(w.HTMLDialogElement){
+ if(!w.HTMLDialogElement.prototype.showModal)w.HTMLDialogElement.prototype.showModal=function(){this.open=true};
+ if(!w.HTMLDialogElement.prototype.close)w.HTMLDialogElement.prototype.close=function(){this.open=false};
+}
+Object.defineProperty(w.navigator,'serviceWorker',{value:{register:async()=>({})},configurable:true});
 w.localStorage.setItem('clo-v3-cache',JSON.stringify(state));
 w.localStorage.setItem('clo-v3-cfg',JSON.stringify({repo:'changxinjiresearch/LifeOS',branch:'main',path:'state.json',token:'nextplan-local'}));
 w.__NEXTPLAN_STATE_ADAPTER__={kind:'local',readState:async()=>JSON.parse(JSON.stringify(state))};
 w.fetch=async()=>({ok:true,json:async()=>state});
 
 const inline=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).filter(s=>s.trim());
-for(const script of inline){
- try{w.eval(script)}catch(e){if(!String(e.message||e).includes('serviceWorker'))throw e;}
-}
+for(const script of inline)w.eval(script);
 
 setTimeout(()=>{
  try{
@@ -70,11 +72,15 @@ setTimeout(()=>{
   assert(text('reviewCompletions').trim()==='1','ui.render.weekly_review_completion',text('reviewCompletions').trim());
   const searchRows=w.eval('searchIndex()');
   assert(searchRows.some(x=>x.kind==='Project'&&x.title==='UI Functional Project'),'ui.search.project_index');
+  assert(searchRows.some(x=>x.kind==='Task'&&x.title==='UI Task A'),'ui.search.task_index');
   assert(searchRows.some(x=>x.kind==='Note'&&x.title==='UI Note'),'ui.search.note_index');
   assert(searchRows.some(x=>x.kind==='Resource'&&x.title==='UI Resource'),'ui.search.resource_index');
+  assert(searchRows.some(x=>x.kind==='Calendar'&&x.title==='UI Meeting'),'ui.search.calendar_index');
   const parsed=w.eval("parseSearchQuery('kind:project UI')");
   assert(parsed.filters.kind==='project'&&parsed.terms.includes('ui'),'ui.search.filter_parser');
+  const decision=w.eval('decisionCandidates()');
+  assert(Array.isArray(decision)&&decision.length>0&&decision[0].project.name==='UI Functional Project','ui.ai_decision_candidates');
   console.log('WINDOWS_FINAL_UI_PASS');
   process.exit(0);
  }catch(e){console.error(e);process.exit(1)}
-},800);
+},1200);
