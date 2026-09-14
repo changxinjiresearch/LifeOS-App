@@ -94,7 +94,7 @@ setTimeout(()=>{
   else console.log('PASS :: ui.settings.theme_control_contract :: canonical Web owns the unlabeled icon control');
 
   assert(!/>\s*CJ\s*</.test(html),'ui.no_cj_avatar');
-  assert(html.includes('Good morning.')&&html.includes('Good afternoon.')&&html.includes('Good evening.'),'ui.greeting_contract');
+  assert(runtime.includes('Good morning.')&&runtime.includes('Good afternoon.')&&runtime.includes('Good evening.'),'ui.greeting_contract');
   console.log('V014_CANONICAL_UI_FUNCTIONAL_PASS');
   process.exit(0);
  }catch(e){console.error(e);process.exit(1)}
