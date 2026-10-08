@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://lifeos-production-89ce.up.railway.app https://raw.githubusercontent.com; form-action 'none'; base-uri 'self'; object-src 'none'">
+<title>NextPlan · Jarvis</title>
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./jarvis.css">
+<script src="./jarvis-local.js" defer></script>\n<script src="./jarvis-client.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="./index.html">← NextPlan</a>
+  <div class="bar-title">J.A.R.V.I.S. <span>· Research & Project Companion</span></div>
+  <div class="status" id="connectionStatus">Checking…</div>
+</header>
+<main>
+  <div class="hero">
+    <div class="orb" aria-hidden="true"><div class="orb-inner"></div></div>
+    <div>
+      <p class="eyebrow">NEXTPLAN INTELLIGENCE</p>
+      <h1>Jarvis 工作空间</h1>
+      <p>延续 ChatGPT 中的工作，检索已确认知识，并安全管理 NextPlan 项目。</p>
+      <p id="environmentNotice" class="notice" role="status">读取运行环境…</p>
+    </div>
+  </div>
+  <section class="config panel" aria-labelledby="cfgTitle">
+    <div class="sectionHead">
+      <h2 id="cfgTitle">私人工作区连接</h2>
+      <span class="small">密钥仅保留在本次浏览器会话，不会提交 GitHub</span>
+    </div>
+    <div class="inline">
+      <label class="grow">独立 Jarvis 访问密钥 <input id="jarvisToken" type="password" autocomplete="off" spellcheck="false" placeholder="仅当后端私人存储已配置时填写"></label>
+      <button id="connectButton" type="button">连接</button>
+      <button id="disconnectButton" type="button" class="secondary">断开</button>
+    </div>
+    <p class="small">尚未配置私人持久存储时，Jarvis 只能读取 NextPlan 现有项目快照；不能保存私人记忆或声称自动同步成功。</p>
+  </section>
+  <section class="config panel" aria-labelledby="localTitle">
+  <div class="sectionHead"><h2 id="localTitle">浏览器本地加密记忆</h2><span class="small">免费 · 仅当前浏览器 · AES-GCM</span></div>
+  <div class="inline">
+    <label class="grow">本地记忆密码（至少 12 位；丢失无法恢复）<input id="localPassphrase" type="password" autocomplete="off" placeholder="用于加密解锁，不上传服务器"></label>
+    <button id="localUnlockButton" type="button" class="secondary">解锁 / 创建</button>
+    <button id="localLockButton" type="button" class="secondary">锁定</button>
+  </div>
+  <p class="small" id="localStorageNotice">本地记忆与服务器试验工作区是两种独立存储模式。首次创建前请记好密码；清理浏览器数据可能永久删除这些记录。不会自动跨设备同步。</p>
+</section>
+<div class="columns">
+    <section class="panel" aria-labelledby="projectsTitle">
+      <div class="sectionHead"><h2 id="projectsTitle">项目状态</h2><button type="button" id="refreshProjects" class="secondary compact">刷新</button></div>
+      <p id="projectScope" class="small">正在读取…</p>
+      <div id="projectList" class="items" aria-live="polite"></div>
+      <button id="bootstrapButton" type="button" class="secondary full" disabled>从 NextPlan 导入到私人试验工作区</button>
+      <p class="small">导入仅建立私人试验副本，不会改变现有 NextPlan 正式项目状态。</p>
+    </section>
+    <section class="panel" aria-labelledby="askTitle">
+      <div class="sectionHead"><h2 id="askTitle">Jarvis 文本对话</h2><span class="small" id="brainMode">只读模式</span></div>
+      <div id="conversation" class="conversation" aria-live="polite"></div>
+      <form id="askForm">
+        <label class="sr-only" for="question">向 Jarvis 提问</label>
+        <textarea id="question" maxlength="1000" rows="3" required placeholder="例如：我目前的科研项目是什么状态？"></textarea>
+        <label class="check"><input type="checkbox" id="modelConsent"> 如果已配置外部语言模型，我同意将本次问题与相关知识发送给该模型。</label>
+        <div class="inline end"><button type="submit">提问</button></div>
+      </form>
+      <p class="small">未连接推理模型时仅提供规则式、可溯源的项目回答；不具备 ChatGPT 同等级的自由推理能力。</p>
+    </section>
+    <section class="panel" aria-labelledby="knowledgeTitle">
+      <div class="sectionHead"><h2 id="knowledgeTitle">知识与上下文交接</h2><button id="copyBundle" type="button" class="secondary compact" disabled>复制交接包</button></div>
+      <form id="knowledgeForm">
+        <label>类型 <select id="knowledgeType"><option value="decision">已确认决策</option><option value="observation">观察结果</option><option value="hypothesis">研究假设</option><option value="preference">偏好</option><option value="handoff">工作交接</option></select></label>
+        <label>归属项目 <select id="knowledgeProject" required><option value="">请选择项目</option></select></label>
+        <label>知识摘要 <textarea id="knowledgeSummary" maxlength="1800" rows="4" required placeholder="只填写你希望 Jarvis 保存的已确认内容，不要粘贴密码、令牌或完整敏感聊天。"></textarea></label>
+        <label>来源引用 <input id="knowledgeSource" maxlength="500" required placeholder="例如：ChatGPT 会话链接 / 研究记录链接"></label>
+        <label class="check"><input id="knowledgeConfirm" type="checkbox" required>我确认以上内容准确，并授权保存到私人知识库。</label>
+        <button type="submit" id="saveKnowledge" disabled>保存知识</button>
+      </form>
+      <div class="sectionHead lower"><h3>已存知识</h3><button id="refreshKnowledge" type="button" class="secondary compact" disabled>检索</button></div>
+      <label class="sr-only" for="knowledgeQuery">搜索知识</label>
+      <input id="knowledgeQuery" placeholder="搜索关键词…" maxlength="200">
+      <div id="knowledgeList" class="items" aria-live="polite"></div>
+    </section>
+  </div>
+</main>
+<footer>NextPlan · Web-first Jarvis Pilot · 需要明确授权 · 不读取 ChatGPT 内部隐藏记忆</footer>
+</body>
+</html>

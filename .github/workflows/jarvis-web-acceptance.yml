@@ -1,0 +1,78 @@
+name: NextPlan Jarvis Web acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'jarvis.html'
+      - 'jarvis-client.js'
+      - 'jarvis-local.js'
+      - 'tests/jarvis-local.test.cjs'
+      - 'jarvis.css'
+      - '.github/workflows/jarvis-web-acceptance.yml'
+  push:
+    branches: [main, 'feature/nextplan-jarvis-web']
+    paths:
+      - 'index.html'
+      - 'jarvis.html'
+      - 'jarvis-client.js'
+      - 'jarvis-local.js'
+      - 'tests/jarvis-local.test.cjs'
+      - 'jarvis.css'
+      - '.github/workflows/jarvis-web-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Browser module syntax
+        run: |
+          node --check jarvis-client.js
+          node --check jarvis-local.js
+          node tests/jarvis-local.test.cjs
+      - name: Existing NextPlan canonical sync contract
+        run: python3 scripts/check_sync_contract.py
+      - name: Verify GitHub Pages includes Jarvis assets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          yml=Path('.github/workflows/nextplan-web-pages.yml').read_text(encoding='utf-8')
+          for name in ('jarvis.html','jarvis.css','jarvis-client.js','jarvis-local.js'):
+              assert Path(name).is_file(), name
+              assert name in yml, name
+          print('Pages asset packaging PASS')
+          PY
+      - name: NextPlan single UI authority and Jarvis safe wiring
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text(encoding='utf-8')
+          page = Path('jarvis.html').read_text(encoding='utf-8')
+          js = Path('jarvis-client.js').read_text(encoding='utf-8')
+          assert 'href="./jarvis.html"' in html
+          assert 'jarvis-client.js' in page
+          assert 'jarvis-local.js' in page
+          assert 'localUnlockButton' in page
+          assert 'jarvis.css' in page
+          assert 'Content-Security-Policy' in page
+          assert 'id="jarvisToken" type="password"' in page
+          assert "sessionStorage" in js
+          assert "confirm(" in js
+          assert "NEXTPLAN_JARVIS_SESSION_TOKEN" in js
+          assert 'raw.githubusercontent.com/changxinjiresearch/LifeOS/main/state.json' in js
+          assert '<script' not in js
+          assert not re.search(r'(ghp_|sk-proj-)[A-Za-z0-9]{10,}', js)
+          assert 'data-view="home"' in html
+          print('NextPlan Jarvis Web wiring and no hardcoded credentials PASS')
+          PY
