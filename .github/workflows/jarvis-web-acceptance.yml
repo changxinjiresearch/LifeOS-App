@@ -14,7 +14,7 @@ on:
       - 'jarvis.css'
       - '.github/workflows/jarvis-web-acceptance.yml'
   push:
-    branches: [main, 'feature/nextplan-jarvis-web']
+    branches: [main, 'feature/nextplan-jarvis-web', 'feature/jarvis-free-cloudflare-web-v1']
     paths:
       - 'index.html'
       - 'jarvis.html'
