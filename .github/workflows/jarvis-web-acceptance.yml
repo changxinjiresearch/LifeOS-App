@@ -7,6 +7,10 @@ on:
       - 'index.html'
       - 'jarvis.html'
       - 'jarvis-client.js'
+      - 'jarvis-local.js'
+      - 'tests/jarvis-local.test.cjs'
+      - 'jarvis-local.js'
+      - 'tests/jarvis-local.test.cjs'
       - 'jarvis.css'
       - '.github/workflows/jarvis-web-acceptance.yml'
   push:
@@ -32,7 +36,10 @@ jobs:
         with:
           node-version: '22'
       - name: Browser module syntax
-        run: node --check jarvis-client.js
+        run: |
+          node --check jarvis-client.js
+          node --check jarvis-local.js
+          node tests/jarvis-local.test.cjs
       - name: NextPlan single UI authority and Jarvis safe wiring
         run: |
           python - <<'PY'
@@ -43,6 +50,8 @@ jobs:
           js = Path('jarvis-client.js').read_text(encoding='utf-8')
           assert 'href="./jarvis.html"' in html
           assert 'jarvis-client.js' in page
+          assert 'jarvis-local.js' in page
+          assert 'localUnlockButton' in page
           assert 'jarvis.css' in page
           assert 'Content-Security-Policy' in page
           assert 'id="jarvisToken" type="password"' in page
