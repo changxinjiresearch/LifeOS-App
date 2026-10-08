@@ -10,6 +10,8 @@ on:
       - 'jarvis-local.js'
       - 'jarvis-free-remote.js'
       - 'jarvis-bridge-ui.js'
+      - 'jarvis-action-parse.js'
+      - 'tests/jarvis-action-parse.test.cjs'
       - 'jarvis-voice.js'
       - 'jarvis-memory-ui.js'
       - 'tests/jarvis-voice.test.cjs'
@@ -26,6 +28,8 @@ on:
       - 'jarvis-local.js'
       - 'jarvis-free-remote.js'
       - 'jarvis-bridge-ui.js'
+      - 'jarvis-action-parse.js'
+      - 'tests/jarvis-action-parse.test.cjs'
       - 'jarvis-voice.js'
       - 'jarvis-memory-ui.js'
       - 'tests/jarvis-voice.test.cjs'
@@ -53,6 +57,8 @@ jobs:
           node --check jarvis-local.js
           node --check jarvis-free-remote.js
           node --check jarvis-bridge-ui.js
+          node --check jarvis-action-parse.js
+          node tests/jarvis-action-parse.test.cjs
           node --check jarvis-voice.js
           node --check jarvis-memory-ui.js
           node tests/jarvis-voice.test.cjs
