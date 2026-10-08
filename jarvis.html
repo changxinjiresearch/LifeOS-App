@@ -61,6 +61,7 @@
       <form id="askForm">
         <label class="sr-only" for="question">向 Jarvis 提问</label>
         <textarea id="question" maxlength="1000" rows="3" required placeholder="例如：我目前的科研项目是什么状态？"></textarea>
+        <label class="check"><input type="checkbox" id="modelConsent"> 如果已配置外部语言模型，我同意将本次问题与相关知识发送给该模型。</label>
         <div class="inline end"><button type="submit">提问</button></div>
       </form>
       <p class="small">未连接推理模型时仅提供规则式、可溯源的项目回答；不具备 ChatGPT 同等级的自由推理能力。</p>
