@@ -77,6 +77,10 @@
 <section class="config panel" aria-labelledby="actionTitle" id="jarvisActionPanel">
   <div class="sectionHead"><h2 id="actionTitle">Jarvis → 正式 NextPlan（人工核验）</h2><span class="small">需要 NextPlan Sync v0.6+ 扩展 · 写入正式项目而非副本</span></div>
   <p class="small" id="jarvisBridgeStatus" role="status">正在检查 NextPlan Sync 浏览器扩展…</p>
+  <div class="inline">
+    <label class="grow">自然语言操作意图（先解析为候选，不会直接写入）<input id="jarvisActionSentence" maxlength="500" placeholder="把 RP新实验的下一步改为核查 P4 实验结果"></label>
+    <button id="jarvisActionParse" type="button" class="secondary">解析并填入待确认表单</button>
+  </div>
   <form id="jarvisCanonicalForm">
     <div class="inline">
       <label class="grow">正式项目<select id="jarvisCanonicalProject" required><option value="">请先连接 NextPlan Sync 扩展</option></select></label>
