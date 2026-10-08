@@ -11,9 +11,11 @@ sw = (root / "sw.js").read_text(encoding="utf-8")
 assert "https://raw.githubusercontent.com/changxinjiresearch/LifeOS/main/state.json" in html
 assert "https://api.github.com/repos/changxinjiresearch/LifeOS/contents/state.json?ref=main" in html
 assert "cache:'no-store'" in html
-assert "syncTimer=setInterval(sync,30000)" in html
+assert "syncTimer=setInterval(()=>sync(false),30000)" in html
+assert "$('syncPill').onclick=()=>sync(true)" in html
+assert "async function fetchCanonicalState(preferApi=false)" in html
 assert "if(getCfg().token){sync()" not in html
-assert "$('syncPill').onclick=sync" in html
+assert "sync(true);syncTimer=setInterval" in html
 assert "if(p.status==='completed'||p.status==='done')return 100;" in html
 assert "nextplan-shell-v13-canonical-state" in sw
 scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, re.S | re.I)
