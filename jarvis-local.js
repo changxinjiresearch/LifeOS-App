@@ -82,7 +82,7 @@
     ready();
     return {format:"nextplan-jarvis-context-v1",authority:"legacy_github_read_only",
       source:"browser_local_encrypted_memory",projects,
-      knowledge:search().map(({fingerprint,...rest})=>rest)};
+      knowledge:current().map(({fingerprint,...rest})=>rest)};
   }
   function lock(){key=null;data=null;salt=null;}
   async function correct(id,row){
