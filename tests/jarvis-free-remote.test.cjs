@@ -14,10 +14,10 @@ globalThis.fetch=async(url,options={})=>{
   requests.push({url,options});
   if(String(url).endsWith("/health"))return {
     ok:true,json:async()=>({service:"nextplan-jarvis-free-ai",configured:true,
-      model:"@cf/zai-org/glm-4.7-flash"})
+      model:"@cf/qwen/qwen3-30b-a3b-fp8"})
   };
   if(String(url).endsWith("/v1/chat"))return {
-    ok:true,status:200,json:async()=>({mode:"free_cloudflare_ai",model:"@cf/zai-org/glm-4.7-flash",
+    ok:true,status:200,json:async()=>({mode:"free_cloudflare_ai",model:"@cf/qwen/qwen3-30b-a3b-fp8",
       answer:"GitHub 是正式实验存储位置。",executed_actions:0,
       sources:[{source_ref:"manual://unit-test"}]})
   };
