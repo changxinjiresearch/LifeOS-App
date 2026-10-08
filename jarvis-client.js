@@ -34,6 +34,8 @@
     if (detail) row.appendChild(el("div", detail, "meta"));
     dom.chat.appendChild(row);
     dom.chat.scrollTop = dom.chat.scrollHeight;
+    if(role==="assistant" && detail.includes("模型：") || (role==="assistant" && detail.includes("来源：")))
+      document.dispatchEvent(new CustomEvent("jarvis:assistant-answer",{detail:{text:String(value)}}));
   }
   function localProjectList(raw) {
     return (Array.isArray(raw) ? raw : []).filter(p=>p && typeof p.id==="string" && typeof p.name==="string").map(p=>({
@@ -172,7 +174,7 @@
     try{
       const q=$("knowledgeQuery").value.trim();
       const data=connected ? await api("/knowledge/search?q="+encodeURIComponent(q))
-        : {items:window.JarvisLocal.search(q)};
+        : {items:window.JarvisLocal.current(q)};
       dom.knowledgeList.replaceChildren();
       for(const item of data.items||[]){
         const box=el("div",undefined,"item");
@@ -186,7 +188,26 @@
             await refreshKnowledge();}
           catch(e){message("删除失败："+e.message);}
         });
-        box.appendChild(del);dom.knowledgeList.appendChild(box);
+        box.appendChild(del);
+        if(!connected&&localUnlocked){
+          const correct=document.createElement("button");correct.textContent="更正记录";
+          correct.className="secondary compact";correct.type="button";
+          correct.addEventListener("click",async()=>{
+            const replacement=prompt("请输入经核实的更正内容。原记录会保留历史但退出当前检索。",item.summary);
+            if(!replacement||replacement===item.summary)return;
+            if(!confirm("将新内容标记为此记录的更新版本？请确认事实依据没有改变。"))return;
+            try{
+              await window.JarvisLocal.correct(item.id,{
+                project_id:item.project_id,context_type:item.context_type,
+                summary:replacement,source_ref:item.source_ref,
+                confirmed:true,user_authorized:true
+              });
+              await refreshKnowledge();message("知识更正已加密保存；旧记录已标记为被替代。");
+            }catch(e){message("更正失败："+e.message);}
+          });
+          box.appendChild(correct);
+        }
+        dom.knowledgeList.appendChild(box);
       }
       if(!data.items?.length)dom.knowledgeList.appendChild(el("div","暂无相关已确认知识。","small"));
     }catch(e){message("知识检索失败："+e.message);}
@@ -233,7 +254,7 @@
     if(window.JarvisFree && window.JarvisFree.ready() && $("modelConsent").checked){
       try{
         const knowledge = localUnlocked
-          ? (window.JarvisLocal.search(q).length ? window.JarvisLocal.search(q) : window.JarvisLocal.search("")).slice(0,8)
+          ? (window.JarvisLocal.current(q).length ? window.JarvisLocal.current(q) : window.JarvisLocal.current("")).slice(0,8)
           : [];
         const projectFacts=(connected&&privateProjects.length?privateProjects:legacyProjects).slice(0,8);
         const r=await window.JarvisFree.ask(q,knowledge,projectFacts,true);
@@ -248,8 +269,8 @@
     if(!connected){
       let answer=fallback(q);
       if(localUnlocked){
-        const hits=window.JarvisLocal.search(q);
-        const relevant=hits.length?hits:window.JarvisLocal.search("").slice(0,5);
+        const hits=window.JarvisLocal.current(q);
+        const relevant=hits.length?hits:window.JarvisLocal.current("").slice(0,5);
         if(relevant.length&&!/项目|进度|下一步|project|status/i.test(q)){
           answer="本地加密知识中的相关记录（未必直接回答问题）：\n"+
             relevant.map(x=>"• "+x.summary+"（"+x.source_ref+"）").join("\n");

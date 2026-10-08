@@ -9,18 +9,30 @@ on:
       - 'jarvis-client.js'
       - 'jarvis-local.js'
       - 'jarvis-free-remote.js'
+      - 'jarvis-bridge-ui.js'
+      - 'jarvis-action-parse.js'
+      - 'tests/jarvis-action-parse.test.cjs'
+      - 'jarvis-voice.js'
+      - 'jarvis-memory-ui.js'
+      - 'tests/jarvis-voice.test.cjs'
       - 'tests/jarvis-free-remote.test.cjs'
       - 'tests/jarvis-local.test.cjs'
       - 'jarvis.css'
       - '.github/workflows/jarvis-web-acceptance.yml'
   push:
-    branches: [main, 'feature/nextplan-jarvis-web', 'feature/jarvis-free-cloudflare-web-v1', 'feature/jarvis-open-qwen3-control-v1']
+    branches: [main, 'feature/jarvis-action-context-voice-v1']
     paths:
       - 'index.html'
       - 'jarvis.html'
       - 'jarvis-client.js'
       - 'jarvis-local.js'
       - 'jarvis-free-remote.js'
+      - 'jarvis-bridge-ui.js'
+      - 'jarvis-action-parse.js'
+      - 'tests/jarvis-action-parse.test.cjs'
+      - 'jarvis-voice.js'
+      - 'jarvis-memory-ui.js'
+      - 'tests/jarvis-voice.test.cjs'
       - 'tests/jarvis-free-remote.test.cjs'
       - 'tests/jarvis-local.test.cjs'
       - 'jarvis.css'
@@ -44,6 +56,12 @@ jobs:
           node --check jarvis-client.js
           node --check jarvis-local.js
           node --check jarvis-free-remote.js
+          node --check jarvis-bridge-ui.js
+          node --check jarvis-action-parse.js
+          node tests/jarvis-action-parse.test.cjs
+          node --check jarvis-voice.js
+          node --check jarvis-memory-ui.js
+          node tests/jarvis-voice.test.cjs
           node tests/jarvis-free-remote.test.cjs
           node tests/jarvis-local.test.cjs
       - name: Existing NextPlan canonical sync contract
@@ -72,6 +90,10 @@ jobs:
           assert 'jarvis-free-remote.js' in page
           assert 'https://*.workers.dev' in page
           assert 'freeConnect' in page
+          assert 'jarvisCaptureRefresh' in page
+          assert 'jarvisCanonicalForm' in page
+          assert 'jarvisMicStart' in page
+          assert 'jarvisMemoryBackup' in page
           assert 'localUnlockButton' in page
           assert 'jarvis.css' in page
           assert 'Content-Security-Policy' in page
