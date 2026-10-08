@@ -34,6 +34,8 @@
     if (detail) row.appendChild(el("div", detail, "meta"));
     dom.chat.appendChild(row);
     dom.chat.scrollTop = dom.chat.scrollHeight;
+    if(role==="assistant" && detail.includes("模型：") || (role==="assistant" && detail.includes("来源：")))
+      document.dispatchEvent(new CustomEvent("jarvis:assistant-answer",{detail:{text:String(value)}}));
   }
   function localProjectList(raw) {
     return (Array.isArray(raw) ? raw : []).filter(p=>p && typeof p.id==="string" && typeof p.name==="string").map(p=>({
