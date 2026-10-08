@@ -230,6 +230,21 @@
     event.preventDefault();
     const q=$("question").value.trim();if(!q)return;
     message(q,"user");$("question").value="";
+    if(window.JarvisFree && window.JarvisFree.ready() && $("modelConsent").checked){
+      try{
+        const knowledge = localUnlocked
+          ? (window.JarvisLocal.search(q).length ? window.JarvisLocal.search(q) : window.JarvisLocal.search("")).slice(0,8)
+          : [];
+        const projectFacts=(connected&&privateProjects.length?privateProjects:legacyProjects).slice(0,8);
+        const r=await window.JarvisFree.ask(q,knowledge,projectFacts,true);
+        const refs=(r.sources||[]).map(x=>x.source_ref).slice(0,8).join(" · ");
+        message(r.answer,"assistant","免费远程模型："+r.model+" · 只读，执行操作 0"+(refs?" · 授权来源："+refs:""));
+        return;
+      }catch(e){
+        message("免费远程推理失败："+e.message+"。未调用付费模型。","assistant");
+        return;
+      }
+    }
     if(!connected){
       let answer=fallback(q);
       if(localUnlocked){
@@ -249,6 +264,27 @@
       message(r.answer,"assistant","模式："+r.mode+"；操作执行数："+r.executed_actions+(refs?"；来源："+refs:""));
     }catch(e){message("Jarvis 无法回答："+e.message);}
   }
+  $("freeConnect").addEventListener("click",async()=>{
+    try{
+      const result=await window.JarvisFree.configure($("freeModelUrl").value,$("freeModelToken").value);
+      $("freeModelToken").value="";
+      $("freeModelStatus").textContent="Cloudflare 免费推理服务已配置；请勾选每次问题下方的授权选项后提问。健康检查不会验证访问密钥，首次问答时将正式验证。";
+      dom.brainMode.textContent="免费远程 Brain · 手动授权";
+      message("已配置免费 Workers AI 模型："+result.model+"。不提供任何付费自动回退。");
+    }catch(e){
+      $("freeModelToken").value="";
+      window.JarvisFree.disconnect();
+      $("freeModelStatus").textContent="连接未建立："+e.message;
+      message("免费模型配置未完成："+e.message);
+    }
+  });
+  $("freeDisconnect").addEventListener("click",()=>{
+    window.JarvisFree.disconnect();
+    $("freeModelToken").value="";
+    $("freeModelStatus").textContent="已断开免费远程模型；不会发送后续问题。";
+    dom.brainMode.textContent="只读模式";
+    message("免费远程模型已断开。");
+  });
   dom.connect.addEventListener("click",connect);dom.disconnect.addEventListener("click",disconnect);
   $("localUnlockButton").addEventListener("click",async()=>{
     const field=$("localPassphrase");
