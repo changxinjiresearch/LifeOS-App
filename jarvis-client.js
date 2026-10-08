@@ -13,6 +13,11 @@
     chat:$("conversation"), brainMode:$("brainMode")
   };
   let connected = false, enabled = false, projects = [], legacyProjects = [], privateRevision = 0, privateProjects = [];
+  let localUnlocked=false;
+  function enableKnowledge(){
+    const active=connected||localUnlocked;
+    dom.save.disabled=!active;dom.refreshKnowledge.disabled=!active;dom.bundle.disabled=!active;
+  }
   let token = sessionStorage.getItem("NEXTPLAN_JARVIS_SESSION_TOKEN") || "";
   dom.token.value = token;
 
@@ -104,7 +109,7 @@
     for(const p of projects){
       const o=el("option",p.name);o.value=p.id;dom.knowledgeProject.appendChild(o);
     }
-    dom.bootstrap.disabled=!(connected && privateRevision===0 && legacyProjects.length);
+    dom.bootstrap.disabled=!(connected && privateRevision===0 && legacyProjects.length);enableKnowledge();
   }
   async function updateProject(project, value){
     if(!connected)return;
@@ -127,7 +132,7 @@
     privateProjects=localProjectList(data.projects);
     privateRevision=data.revision;
     renderProjects();
-    dom.save.disabled=false;dom.refreshKnowledge.disabled=false;dom.bundle.disabled=false;
+    enableKnowledge();
     dom.brainMode.textContent="私人只读助手 · 非自主执行";
   }
   async function connect(){
@@ -148,7 +153,7 @@
   function disconnect(){
     token="";connected=false;privateProjects=[];privateRevision=0;dom.token.value="";
     sessionStorage.removeItem("NEXTPLAN_JARVIS_SESSION_TOKEN");
-    dom.save.disabled=true;dom.bundle.disabled=true;dom.refreshKnowledge.disabled=true;
+    enableKnowledge();
     dom.knowledgeList.replaceChildren();
     renderProjects();checkBackend();
     message("已断开私人数据连接。");
@@ -163,10 +168,11 @@
     }catch(e){message("导入未完成："+e.message);}
   }
   async function refreshKnowledge(){
-    if(!connected)return;
+    if(!connected&&!localUnlocked)return;
     try{
       const q=$("knowledgeQuery").value.trim();
-      const data=await api("/knowledge/search?q="+encodeURIComponent(q));
+      const data=connected ? await api("/knowledge/search?q="+encodeURIComponent(q))
+        : {items:window.JarvisLocal.search(q)};
       dom.knowledgeList.replaceChildren();
       for(const item of data.items||[]){
         const box=el("div",undefined,"item");
@@ -175,7 +181,9 @@
         const del=el("button","删除记录","secondary compact");
         del.type="button";del.addEventListener("click",async()=>{
           if(!confirm("确定删除这条私人知识记录？"))return;
-          try{await api("/knowledge/delete",{method:"POST",body:{id:item.id,confirmed:true}});await refreshKnowledge();}
+          try{if(connected)await api("/knowledge/delete",{method:"POST",body:{id:item.id,confirmed:true}});
+            else await window.JarvisLocal.remove(item.id);
+            await refreshKnowledge();}
           catch(e){message("删除失败："+e.message);}
         });
         box.appendChild(del);dom.knowledgeList.appendChild(box);
@@ -184,7 +192,7 @@
     }catch(e){message("知识检索失败："+e.message);}
   }
   async function saveKnowledge(event){
-    event.preventDefault();if(!connected)return;
+    event.preventDefault();if(!connected&&!localUnlocked)return;
     if(!$("knowledgeConfirm").checked){message("请先明确确认并授权保存。");return;}
     try{
       const body={
@@ -193,16 +201,18 @@
         source_ref:$("knowledgeSource").value.trim(),
         user_authorized:true,confirmed_by_user:true
       };
-      const r=await api("/context/record",{method:"POST",body});
+      const r=connected ? await api("/context/record",{method:"POST",body})
+        : await window.JarvisLocal.add({...body,confirmed:true});
       message(r.status==="recorded"?"知识已保存到私人工作区。":"这条知识已经存在，不重复保存。");
       $("knowledgeSummary").value="";$("knowledgeConfirm").checked=false;await refreshKnowledge();
     }catch(e){message("知识未保存："+e.message);}
   }
   async function copyBundle(){
-    if(!connected)return;
+    if(!connected&&!localUnlocked)return;
     if(!confirm("交接包包含私人项目与知识摘要，将复制到剪贴板。你可以自行选择是否粘贴到 ChatGPT。继续？"))return;
     try{
-      const b=await api("/context/bundle");
+      const b=connected ? await api("/context/bundle")
+        : window.JarvisLocal.exportBundle(legacyProjects);
       await navigator.clipboard.writeText(JSON.stringify(b,null,2));
       message("已将经授权的项目背景和知识摘要复制到剪贴板；尚未自动发送到 ChatGPT。");
     }catch(e){message("复制失败："+e.message);}
@@ -221,7 +231,16 @@
     const q=$("question").value.trim();if(!q)return;
     message(q,"user");$("question").value="";
     if(!connected){
-      message(fallback(q),"assistant","来源：NextPlan 公开项目状态 · 规则式只读响应");
+      let answer=fallback(q);
+      if(localUnlocked){
+        const hits=window.JarvisLocal.search(q);
+        const relevant=hits.length?hits:window.JarvisLocal.search("").slice(0,5);
+        if(relevant.length&&!/项目|进度|下一步|project|status/i.test(q)){
+          answer="本地加密知识中的相关记录（未必直接回答问题）：\n"+
+            relevant.map(x=>"• "+x.summary+"（"+x.source_ref+"）").join("\n");
+        }
+      }
+      message(answer,"assistant","来源：NextPlan 项目状态 / 本地加密记忆 · 只读规则响应");
       return;
     }
     try{
@@ -231,6 +250,22 @@
     }catch(e){message("Jarvis 无法回答："+e.message);}
   }
   dom.connect.addEventListener("click",connect);dom.disconnect.addEventListener("click",disconnect);
+  $("localUnlockButton").addEventListener("click",async()=>{
+    const field=$("localPassphrase");
+    try{
+      const result=await window.JarvisLocal.unlock(field.value);
+      field.value="";localUnlocked=true;enableKnowledge();
+      $("localStorageNotice").textContent="本地加密记忆已解锁。仅存于当前浏览器，不会自动跨设备同步。";
+      message(result.new_store?"已创建本地加密记忆库，请妥善保管密码。":"已解锁本地加密记忆："+result.count+" 条。");
+      await refreshKnowledge();
+    }catch(e){field.value="";message("本地记忆未解锁："+e.message);}
+  });
+  $("localLockButton").addEventListener("click",()=>{
+    window.JarvisLocal.lock();localUnlocked=false;enableKnowledge();
+    $("localStorageNotice").textContent="本地加密记忆已锁定，密码未被保存。";
+    if(!connected)dom.knowledgeList.replaceChildren();
+    message("本地加密记忆已锁定。");
+  });
   $("refreshProjects").addEventListener("click",async()=>{await readLegacy();if(connected){try{await loadPrivate();}catch(e){message(e.message);}}renderProjects();});
   dom.bootstrap.addEventListener("click",bootstrap);
   $("knowledgeForm").addEventListener("submit",saveKnowledge);
