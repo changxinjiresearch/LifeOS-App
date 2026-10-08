@@ -13,6 +13,9 @@ on:
       - 'jarvis-client.js'
       - 'jarvis-local.js'
       - 'jarvis-free-remote.js'
+      - 'jarvis-bridge-ui.js'
+      - 'jarvis-voice.js'
+      - 'jarvis-memory-ui.js'
       - 'scripts/check_sync_contract.py'
       - '.github/workflows/nextplan-web-pages.yml'
   workflow_dispatch:
@@ -50,7 +53,7 @@ jobs:
       - name: Prepare deployment
         run: |
           mkdir -p site
-          cp index.html sw.js current-action.js apple-web-v1.css icon.svg manifest.webmanifest jarvis.html jarvis.css jarvis-client.js jarvis-local.js jarvis-free-remote.js site/
+          cp index.html sw.js current-action.js apple-web-v1.css icon.svg manifest.webmanifest jarvis.html jarvis.css jarvis-client.js jarvis-local.js jarvis-free-remote.js jarvis-bridge-ui.js jarvis-voice.js jarvis-memory-ui.js site/
           touch site/.nojekyll
       - uses: actions/upload-pages-artifact@v4
         with:
