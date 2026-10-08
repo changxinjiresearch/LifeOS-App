@@ -17,7 +17,9 @@ assert "async function fetchCanonicalState(preferApi=false)" in html
 assert "if(getCfg().token){sync()" not in html
 assert "sync(true);syncTimer=setInterval" in html
 assert "if(p.status==='completed'||p.status==='done')return 100;" in html
-assert "nextplan-shell-v13-canonical-state" in sw
+assert "request.mode === 'navigate'" in sw
+assert "cache: 'no-store'" in sw
+assert "self.clients.claim()" in sw
 scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, re.S | re.I)
 assert len(scripts) == 1, f"Expected one inline script, got {len(scripts)}"
 with tempfile.TemporaryDirectory() as tmp:
