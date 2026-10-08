@@ -9,8 +9,6 @@ on:
       - 'jarvis-client.js'
       - 'jarvis-local.js'
       - 'tests/jarvis-local.test.cjs'
-      - 'jarvis-local.js'
-      - 'tests/jarvis-local.test.cjs'
       - 'jarvis.css'
       - '.github/workflows/jarvis-web-acceptance.yml'
   push:
@@ -19,6 +17,8 @@ on:
       - 'index.html'
       - 'jarvis.html'
       - 'jarvis-client.js'
+      - 'jarvis-local.js'
+      - 'tests/jarvis-local.test.cjs'
       - 'jarvis.css'
       - '.github/workflows/jarvis-web-acceptance.yml'
   workflow_dispatch:
