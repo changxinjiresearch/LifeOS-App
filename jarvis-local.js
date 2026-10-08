@@ -85,6 +85,49 @@
       knowledge:search().map(({fingerprint,...rest})=>rest)};
   }
   function lock(){key=null;data=null;salt=null;}
-  window.JarvisLocal={unlock,add,search,remove,exportBundle,lock,ready:()=>!!key,
+  async function correct(id,row){
+    ready();
+    const old=data.knowledge.find(x=>x.id===id);
+    if(!old)throw Error("无法找到原知识");
+    if(!row?.confirmed||!row?.user_authorized)throw Error("知识修订需要明确确认");
+    if(row.project_id!==old.project_id)throw Error("修订必须归属原项目");
+    const result=await add(row);
+    if(result.status!=="recorded")throw Error("新知识必须与旧记录不同，才能标记修订");
+    old.superseded_by=result.id;old.corrected_at=new Date().toISOString();
+    await persist();
+    return {status:"corrected",old_id:id,new_id:result.id};
+  }
+  function current(query="",project_id=""){
+    return search(query,project_id).filter(x=>!x.superseded_by);
+  }
+  function encryptedBackup(){
+    const raw=localStorage.getItem(STORAGE);
+    if(!raw)throw Error("还没有创建本地加密记忆");
+    return raw;
+  }
+  async function restoreEncryptedBackup(raw,passphrase,{overwrite=false}={}){
+    if(typeof raw!=="string"||raw.length>8*1024*1024)throw Error("备份格式或大小错误");
+    if(localStorage.getItem(STORAGE)&&!overwrite)
+      throw Error("已有本地记忆，必须确认覆盖并事先备份");
+    let obj;
+    try{obj=JSON.parse(raw);}catch(_){throw Error("备份不是有效 JSON");}
+    if(obj?.v!==1||typeof obj.salt!=="string"||typeof obj.iv!=="string"||
+       typeof obj.cipher!=="string")throw Error("加密备份结构错误");
+    let decrypted;
+    try{
+      const saltBytes=fromB64(obj.salt),iv=fromB64(obj.iv),cipher=fromB64(obj.cipher);
+      if(saltBytes.length!==16||iv.length!==12)throw Error("bad metadata");
+      const importedKey=await derive(passphrase,saltBytes);
+      decrypted=JSON.parse(dec.decode(await crypto.subtle.decrypt({name:"AES-GCM",iv},
+        importedKey,cipher)));
+      if(decrypted.version!==1||!Array.isArray(decrypted.knowledge))
+        throw Error("bad data");
+    }catch(_){throw Error("密码错误、密文损坏或备份不受支持");}
+    localStorage.setItem(STORAGE,raw);
+    lock();
+    return {status:"restored",count:decrypted.knowledge.length};
+  }
+  window.JarvisLocal={unlock,add,search,current,correct,remove,exportBundle,
+    encryptedBackup,restoreEncryptedBackup,lock,ready:()=>!!key,
     initialized:()=>!!localStorage.getItem(STORAGE)};
 })();
