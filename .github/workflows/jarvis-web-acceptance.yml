@@ -40,6 +40,18 @@ jobs:
           node --check jarvis-client.js
           node --check jarvis-local.js
           node tests/jarvis-local.test.cjs
+      - name: Existing NextPlan canonical sync contract
+        run: python3 scripts/check_sync_contract.py
+      - name: Verify GitHub Pages includes Jarvis assets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          yml=Path('.github/workflows/nextplan-web-pages.yml').read_text(encoding='utf-8')
+          for name in ('jarvis.html','jarvis.css','jarvis-client.js','jarvis-local.js'):
+              assert Path(name).is_file(), name
+              assert name in yml, name
+          print('Pages asset packaging PASS')
+          PY
       - name: NextPlan single UI authority and Jarvis safe wiring
         run: |
           python - <<'PY'
