@@ -244,7 +244,7 @@
       return;
     }
     try{
-      const r=await api("/brain/ask",{method:"POST",body:{question:q}});
+      const r=await api("/brain/ask",{method:"POST",body:{question:q,allow_model:$("modelConsent").checked}});
       const refs=(r.sources||[]).map(x=>x.source_ref).slice(0,5).join(" · ");
       message(r.answer,"assistant","模式："+r.mode+"；操作执行数："+r.executed_actions+(refs?"；来源："+refs:""));
     }catch(e){message("Jarvis 无法回答："+e.message);}
