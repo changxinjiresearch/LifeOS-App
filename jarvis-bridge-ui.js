@@ -112,6 +112,16 @@
       row.append(chooser,kind,save);host.appendChild(row);
     }
   }
+  $("jarvisActionParse").addEventListener("click",()=>{
+    try{
+      const draft=window.JarvisActionParser.parse($("jarvisActionSentence").value,authoritative);
+      $("jarvisCanonicalProject").value=draft.project_id;
+      $("jarvisCanonicalField").value=draft.field;
+      if(draft.field==="next_action")$("jarvisCanonicalNext").value=draft.value;
+      else $("jarvisCanonicalStatus").value=draft.value;
+      feedback("已解析到人工审核表单，尚未排队或执行任何修改。请检查项目和具体值，再点击提交待确认操作。");
+    }catch(e){feedback("无法安全解析："+e.message);}
+  });
   $("jarvisCanonicalRefresh").addEventListener("click",refreshProjects);
   $("jarvisCanonicalForm").addEventListener("submit",prepareCanonical);
   $("jarvisCaptureRefresh").addEventListener("click",async()=>{
