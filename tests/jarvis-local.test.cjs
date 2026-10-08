@@ -53,6 +53,7 @@ vm.runInThisContext(fs.readFileSync("jarvis-local.js","utf8"));
   assert.equal((await mem.unlock("a-complicated-passphrase-2026")).count,2);
   assert.equal(mem.current().length,1);
   assert.equal((await mem.remove(r.id)).status,"deleted");
+  assert.equal((await mem.remove(updated.new_id)).status,"deleted");
   assert.equal(mem.search().length,0);
   console.log("NextPlan Jarvis AES-GCM local memory: encryption/consent/search/lock/unlock/delete PASS");
 })().catch(err=>{console.error(err);process.exitCode=1});
