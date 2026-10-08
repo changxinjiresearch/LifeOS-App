@@ -36,6 +36,22 @@ vm.runInThisContext(fs.readFileSync("jarvis-local.js","utf8"));
   await assert.rejects(mem.unlock("incorrect-password-2026"),/密码不正确/);
   assert.equal((await mem.unlock("a-complicated-passphrase-2026")).count,1);
   assert.equal(mem.search("experiment").length,1);
+  const encryptedBackup=mem.encryptedBackup();
+  const updated=await mem.correct(r.id,{...item,summary:"Choose updated experiment C"});
+  assert.equal(updated.status,"corrected");
+  assert.equal(mem.current("Choose experiment B").length,0);
+  assert.equal(mem.current("experiment C").length,1);
+  assert.equal(mem.exportBundle([{id:"project-one",name:"test"}]).knowledge.length,1);
+  const correctedBackup=mem.encryptedBackup();
+  mem.lock();
+  await assert.rejects(mem.restoreEncryptedBackup(correctedBackup,"wrong-password-2026",{overwrite:true}),
+    /密码错误/);
+  await assert.rejects(mem.restoreEncryptedBackup(correctedBackup,"a-complicated-passphrase-2026"),
+    /已有本地记忆/);
+  const restored=await mem.restoreEncryptedBackup(correctedBackup,"a-complicated-passphrase-2026",{overwrite:true});
+  assert.equal(restored.status,"restored");
+  assert.equal((await mem.unlock("a-complicated-passphrase-2026")).count,2);
+  assert.equal(mem.current().length,1);
   assert.equal((await mem.remove(r.id)).status,"deleted");
   assert.equal(mem.search().length,0);
   console.log("NextPlan Jarvis AES-GCM local memory: encryption/consent/search/lock/unlock/delete PASS");
