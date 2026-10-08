@@ -12,6 +12,7 @@ on:
       - 'jarvis-bridge-ui.js'
       - 'jarvis-voice.js'
       - 'jarvis-memory-ui.js'
+      - 'tests/jarvis-voice.test.cjs'
       - 'tests/jarvis-free-remote.test.cjs'
       - 'tests/jarvis-local.test.cjs'
       - 'jarvis.css'
@@ -27,6 +28,7 @@ on:
       - 'jarvis-bridge-ui.js'
       - 'jarvis-voice.js'
       - 'jarvis-memory-ui.js'
+      - 'tests/jarvis-voice.test.cjs'
       - 'tests/jarvis-free-remote.test.cjs'
       - 'tests/jarvis-local.test.cjs'
       - 'jarvis.css'
@@ -53,6 +55,7 @@ jobs:
           node --check jarvis-bridge-ui.js
           node --check jarvis-voice.js
           node --check jarvis-memory-ui.js
+          node tests/jarvis-voice.test.cjs
           node tests/jarvis-free-remote.test.cjs
           node tests/jarvis-local.test.cjs
       - name: Existing NextPlan canonical sync contract
