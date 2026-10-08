@@ -77,7 +77,7 @@
       <form id="askForm">
         <label class="sr-only" for="question">向 Jarvis 提问</label>
         <textarea id="question" maxlength="1000" rows="3" required placeholder="例如：我目前的科研项目是什么状态？"></textarea>
-        <label class="check"><input type="checkbox" id="modelConsent"> 我明确同意本次问题、相关项目及知识摘要发送到我配置的 Cloudflare 免费模型；不包括其他聊天记录。</label>
+        <label class="check"><input type="checkbox" id="modelConsent"> 我同意把本次问题、相关项目及知识摘要、当前 Jarvis 会话最近 6 条问答发送到 Cloudflare 免费模型；不会读取 ChatGPT 的其他历史对话。</label>
         <div class="inline end"><button type="submit">提问</button></div>
       </form>
       <p class="small">未连接推理模型时仅提供规则式、可溯源的项目回答；不具备 ChatGPT 同等级的自由推理能力。</p>
