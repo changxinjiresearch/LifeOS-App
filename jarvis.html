@@ -48,6 +48,14 @@
     <button id="localUnlockButton" type="button" class="secondary">解锁 / 创建</button>
     <button id="localLockButton" type="button" class="secondary">锁定</button>
   </div>
+  <div class="inline">
+    <button id="jarvisMemoryBackup" type="button" class="secondary">下载加密备份</button>
+    <label class="grow">从加密备份文件恢复（会覆盖当前浏览器知识，需密码）
+      <input id="jarvisMemoryRestoreFile" type="file" accept=".json,application/json">
+    </label>
+    <button id="jarvisMemoryRestore" type="button" class="secondary">验证并恢复</button>
+  </div>
+  <p class="small" id="jarvisBackupStatus" role="status">备份文件只有密文，恢复时仍需原加密密码。覆盖前请先下载现有备份。</p>
   <p class="small" id="localStorageNotice">本地记忆与服务器试验工作区是两种独立存储模式。首次创建前请记好密码；清理浏览器数据可能永久删除这些记录。不会自动跨设备同步。</p>
 </section>
 <section class="config panel" aria-labelledby="freeModelTitle">
@@ -80,7 +88,7 @@
       <button type="button" class="secondary" id="jarvisCanonicalRefresh">刷新正式数据</button>
     </div>
   </form>
-  <p class="small">Jarvis 只提出候选修改。你需要打开 Chrome 的 NextPlan Sync 扩展，人工点击“同步”，系统再读取正式状态进行验证。未验证前不能宣称已完成。</p>
+  <p class="small">注意：NextPlan 现有正式项目状态存于公开 GitHub 仓库，避免填写敏感个人信息。Jarvis 只提出候选修改。你需要打开 Chrome 的 NextPlan Sync 扩展，人工点击“同步”，系统再读取正式状态进行验证。未验证前不能宣称已完成。</p>
 </section>
 <section class="config panel" aria-labelledby="captureTitle">
   <div class="sectionHead"><h2 id="captureTitle">ChatGPT → Jarvis 明确授权上下文</h2>
