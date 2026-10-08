@@ -6,7 +6,7 @@ const {webcrypto} = require("node:crypto");
 
 const memory = new Map();
 globalThis.window=globalThis;
-globalThis.crypto=webcrypto;
+Object.defineProperty(globalThis,"crypto",{value:webcrypto,configurable:true});
 globalThis.localStorage={
   getItem:k=>memory.has(k)?memory.get(k):null,
   setItem:(k,v)=>memory.set(k,String(v))
