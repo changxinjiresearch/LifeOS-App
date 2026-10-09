@@ -56,6 +56,15 @@
     const before=field==="status"?project.status:project.next_action;
     const after=proposal[field];
     if(!after||before===after){feedback("变更内容为空或与当前状态一致");return;}
+    if(field==="next_action"){
+      try{
+        // Never queue an instruction string as the actual project work.
+        window.JarvisActionParser.validateNextAction(after,project,authoritative);
+      }catch(e){
+        feedback("操作被安全校验阻止："+e.message);
+        return;
+      }
+    }
     if(!confirm("正式 NextPlan 项目："+project.name+"\n字段："+field+"\n当前："+before+"\n拟修改："+after+"\n\n仅添加至浏览器扩展人工确认队列，不会立即写入。继续？"))return;
     try{
       const r=await request("NEXTPLAN_JARVIS_QUEUE",{proposal});
