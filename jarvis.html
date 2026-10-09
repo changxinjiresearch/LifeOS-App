@@ -73,7 +73,7 @@
     <button id="freeDisconnect" type="button" class="secondary">断开</button>
   </div>
   <p id="freeModelStatus" class="small" role="status">尚未配置 Cloudflare 免费模型服务；原有本地记忆和规则式问答仍然可用。</p>
-  <p class="small">只有你勾选问题下方的单次授权复选框，才会将本次问题及最多 8 条已确认知识、8 个项目摘要发送给 Cloudflare 推理服务。请勿发送密码、签证文件、医疗记录或其他私人敏感内容。免费额度耗尽后不会转用付费模型。</p>
+  <p class="small">只有你勾选问题下方的授权复选框，才会将本次问题及每轮最多 8 条知识、8 个项目摘要发送到 Cloudflare；复杂问题可能调用最多两次免费模型（规划→检索→回答），但不会自动转付费。请勿发送密码、签证文件、医疗记录或其他私人敏感内容。免费额度耗尽后不会转用付费模型。</p>
 </section>
 <section class="config panel" aria-labelledby="actionTitle" id="jarvisActionPanel">
   <div class="sectionHead"><h2 id="actionTitle">Jarvis → 正式 NextPlan（人工核验）</h2><span class="small">需要 NextPlan Sync v0.6+ 扩展 · 写入正式项目而非副本</span></div>
@@ -127,7 +127,7 @@
       <form id="askForm">
         <label class="sr-only" for="question">向 Jarvis 提问</label>
         <textarea id="question" maxlength="1000" rows="3" required placeholder="例如：我目前的科研项目是什么状态？"></textarea>
-        <label class="check"><input type="checkbox" id="modelConsent"> 我同意把本次问题、相关项目及知识摘要、当前 Jarvis 会话最近 6 条问答发送到 Cloudflare 免费模型；不会读取 ChatGPT 的其他历史对话。</label>
+        <label class="check"><input type="checkbox" id="modelConsent"> 我同意把本次问题、相关项目及知识摘要、当前 Jarvis 会话最近 6 条问答发送到 Cloudflare 免费模型；复杂问题可能使用两次调用；不会读取 ChatGPT 的其他历史对话。</label>
         <div class="inline end"><button type="submit">提问</button></div>
       </form>
       <p class="small">未连接推理模型时仅提供规则式、可溯源的项目回答；不具备 ChatGPT 同等级的自由推理能力。</p>
