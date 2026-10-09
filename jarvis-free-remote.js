@@ -121,6 +121,20 @@
     // retry, and a quota failure aborts without a second call.
     if (requiresPlanning(q) && (allKnowledge.length || allProjects.length)) {
       const plan = await remote({phase:"plan",question:q,...context,history:recent});
+      // Older already-deployed Workers ignore the new phase field and return
+      // a normal read-only answer. Keep that answer rather than requiring
+      // a Cloudflare redeploy before the existing app remains usable.
+      if (plan.mode==="free_cloudflare_ai" && plan.executed_actions===0 &&
+          typeof plan.answer==="string" && plan.answer.trim()) {
+        const allowed=new Set(context.knowledge.map(x=>x.source_ref));
+        plan.sources=(Array.isArray(plan.sources)?plan.sources:[]).filter(x=>x&&allowed.has(x.source_ref));
+        plan.read_steps=1;
+        plan.verification={source_allowlist_checked:true,semantic_truth_verified:false};
+        history.push({role:"user",content:q.slice(0,400)});
+        history.push({role:"assistant",content:plan.answer.slice(0,400)});
+        history=history.slice(-6);
+        return plan;
+      }
       if (plan.executed_actions!==0 || plan.mode!=="free_cloudflare_ai_plan")
         throw new Error("规划结果未通过只读模式验证");
       queries = (Array.isArray(plan.search_queries)?plan.search_queries:[])
