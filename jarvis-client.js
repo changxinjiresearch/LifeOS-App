@@ -253,13 +253,13 @@
     message(q,"user");$("question").value="";
     if(window.JarvisFree && window.JarvisFree.ready() && $("modelConsent").checked){
       try{
-        const knowledge = localUnlocked
-          ? (window.JarvisLocal.current(q).length ? window.JarvisLocal.current(q) : window.JarvisLocal.current("")).slice(0,8)
-          : [];
-        const projectFacts=(connected&&privateProjects.length?privateProjects:legacyProjects).slice(0,8);
+        // Rank locally across up to 50 unlocked memories and all visible
+        // projects. Only the top 8 of each are sent per consented inference.
+        const knowledge = localUnlocked ? window.JarvisLocal.current("") : [];
+        const projectFacts=(connected&&privateProjects.length?privateProjects:legacyProjects);
         const r=await window.JarvisFree.ask(q,knowledge,projectFacts,true);
         const refs=(r.sources||[]).map(x=>x.source_ref).slice(0,8).join(" · ");
-        message(r.answer,"assistant","免费远程模型："+r.model+" · 只读，执行操作 0"+(refs?" · 授权来源："+refs:""));
+        message(r.answer,"assistant","免费远程模型："+r.model+" · "+(r.read_steps===2?"两阶段检索推理":"单次推理")+" · 只读，执行操作 0"+(refs?" · 提供的知识来源（非独立核验）："+refs:""));
         return;
       }catch(e){
         message("免费远程推理失败："+e.message+"。未调用付费模型。","assistant");
