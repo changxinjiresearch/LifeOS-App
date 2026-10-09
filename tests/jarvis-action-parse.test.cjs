@@ -16,3 +16,14 @@ test("only unambiguous explicit project operations become editable suggestions",
     assert.throws(()=>parse(value,projects));
   }
 });
+
+test("submit guard blocks entire natural language command in next-action field",()=>{
+  const project=projects[0];
+  const instruction="把RP新实验的下一步改为核查P4实验结果";
+  const parsed=parse(instruction,projects);
+  assert.equal(parsed.value,"核查P4实验结果");
+  assert.throws(()=>window.JarvisActionParser.validateNextAction(instruction,project,projects),/包含完整的修改指令/);
+  assert.equal(window.JarvisActionParser.validateNextAction(parsed.value,project,projects),"核查P4实验结果");
+  assert.equal(window.JarvisActionParser.validateNextAction("  核查P4实验结果  ",project,projects),"核查P4实验结果");
+  assert.throws(()=>window.JarvisActionParser.validateNextAction("请将RP新实验下一步设置为核查P4报告",project,projects),/包含完整的修改指令/);
+});
