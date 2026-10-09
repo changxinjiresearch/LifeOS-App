@@ -27,7 +27,7 @@
     // Reject an instruction accidentally pasted into the *result* field.
     // The field must contain the resulting work description, not a command
     // telling Jarvis to perform a change.
-    if(/(?:把|将|请|Jarvis)[\\s\\S]{0,180}(?:下一步|next_action|项目状态)[\\s\\S]{0,40}(?:改为|改成|修改为|设置为|设为)/i.test(value)){
+    if(/(?:把|将|请|Jarvis)[\s\S]{0,180}(?:下一步|next_action|项目状态)[\s\S]{0,40}(?:改为|改成|修改为|设置为|设为)/i.test(value)){
       throw Error("下一步工作包含完整的修改指令。请把整句放到上面的「自然语言操作意图」，点击「解析并填入待确认表单」，再确认下方只留下具体工作内容。");
     }
     // A second parser-based check catches semantically equivalent commands
