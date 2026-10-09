@@ -20,5 +20,28 @@
     if(val)return {project_id:p.id,field:"status",value:states[val]||val};
     throw Error("无法可靠识别操作类型。请使用“项目名 + 下一步改为…”或“项目名 + 状态改为…”，或直接使用下方表单");
   }
-  window.JarvisActionParser={parse};
+  function validateNextAction(raw,project,projects){
+    if(typeof raw!=="string"||!raw.trim()||raw.length>500)
+      throw Error("下一步工作不能为空，且不能超过 500 字符");
+    const value=raw.trim();
+    // Reject an instruction accidentally pasted into the *result* field.
+    // The field must contain the resulting work description, not a command
+    // telling Jarvis to perform a change.
+    if(/(?:把|将|请|Jarvis)[\\s\\S]{0,180}(?:下一步|next_action|项目状态)[\\s\\S]{0,40}(?:改为|改成|修改为|设置为|设为)/i.test(value)){
+      throw Error("下一步工作包含完整的修改指令。请把整句放到上面的「自然语言操作意图」，点击「解析并填入待确认表单」，再确认下方只留下具体工作内容。");
+    }
+    // A second parser-based check catches semantically equivalent commands
+    // even if future grammar variants are introduced.
+    try{
+      const candidate=parse(value,projects);
+      if(candidate.field==="next_action"&&candidate.project_id===project?.id&&candidate.value!==value){
+        throw Error("下一步工作不能是整句操作命令，应仅填写具体工作内容");
+      }
+    }catch(err){
+      if(/下一步工作不能是整句操作命令/.test(err.message))throw err;
+      // A normal task description need not parse as an instruction.
+    }
+    return value;
+  }
+  window.JarvisActionParser={parse,validateNextAction};
 })();
