@@ -147,3 +147,25 @@ test("Brain v2 rejects malicious or write-capable planning result",async()=>{
     assert.equal(n,1);
   }finally{globalThis.fetch=previous;free.disconnect();}
 });
+
+test("Brain v2 stays compatible with old Workers that ignore the planning phase",async()=>{
+  const free=globalThis.JarvisFree;
+  const previous=globalThis.fetch;let requests=0;
+  globalThis.fetch=async(url,opts)=>{
+    if(String(url).endsWith("/health"))return {ok:true,json:async()=>({
+      service:"nextplan-jarvis-free-ai",configured:true,model:"old-qwen"})};
+    requests++;
+    return {ok:true,status:200,json:async()=>({
+      mode:"free_cloudflare_ai",answer:"旧版兼容回答",executed_actions:0,
+      sources:[{source_ref:"manual://ok"},{source_ref:"manual://invented"}]})};
+  };
+  try{
+    await free.configure(origin,secret);
+    const result=await free.ask("为什么 P4 实验中断，如何处理？",[
+      {summary:"P4 需要检查运行日志",source_ref:"manual://ok",
+        epistemic_status:"user_confirmed"}],[{name:"P4",status:"active"}],true);
+    assert.equal(requests,1);
+    assert.equal(result.answer,"旧版兼容回答");
+    assert.deepEqual(result.sources,[{source_ref:"manual://ok"}]);
+  }finally{globalThis.fetch=previous;free.disconnect()}
+});
